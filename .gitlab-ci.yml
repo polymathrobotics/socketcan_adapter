@@ -1,0 +1,25 @@
+include:
+  - project: "polymathrobotics/ci/ci_templates"
+    ref: main
+    file: "/ros/ros2_package.impl.yml"
+    # Enables checking out the current branch on build and test jobs
+  - project: "polymathrobotics/ci/ci_templates"
+    ref: main
+    file: "/common/rules.yml"
+
+build_and_test_socketcan_adapter:
+  variables:
+    PACKAGE_NAME: socketcan_adapter
+    PACKAGE_DIRECTORY: $PACKAGE_NAME
+  extends: .ros2_build_and_test
+
+eval_socketcan_adapter:
+  extends: .ros2_evaluate
+  variables:
+    PACKAGE_NAME: socketcan_adapter
+  needs:
+    - job: build_and_test_socketcan_adapter
+      artifacts: true
+  artifacts:
+    reports:
+      junit: $ARTIFACTS_PATH/test_results/test_results/$PACKAGE_NAME/*.xml
