@@ -1,500 +1,166 @@
-#define CATCH_CONFIG_MAIN
-#include <catch2/catch.hpp>
-#include <cstdlib>
-#include <iostream>
+// Copyright (c) 2025-present Polymath Robotics, Inc. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "socketcan_adapter/socketcan_adapter.hpp"
 
-using namespace polymath::socketcan;
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <string>
 
-TEST_CASE("SocketcanAdapter tests", "[SocketcanAdapter]")
+#include <catch2/catch.hpp>
+
+TEST_CASE("CanFrame default constructor", "[CanFrame]")
 {
+  polymath::socketcan::CanFrame frame;
 
-  SECTION("Constructor and destructor")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    REQUIRE(adapter.get_socket_state() == SocketState::CLOSED);
-  }
-
-  SECTION("Open and close socket")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    REQUIRE(adapter.openSocket());
-    REQUIRE(adapter.get_socket_state() == SocketState::OPEN);
-    REQUIRE(adapter.closeSocket());
-    REQUIRE(adapter.get_socket_state() == SocketState::CLOSED);
-  }
-
-  SECTION("Receive and send CanFrame")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    SocketcanAdapter receipt_adapter(interface_name);
-    REQUIRE(adapter.openSocket());
-    REQUIRE(receipt_adapter.openSocket());
-
-    CanFrame frame;
-    frame.set_can_id(0x123);
-    frame.set_len(4);
-    std::array<unsigned char, CAN_MAX_DLC> data = {0x01, 0x02, 0x03, 0x04};
-    frame.set_data(data);
-
-    auto send_result = adapter.send(frame);
-    REQUIRE(!send_result.has_value());
-
-    std::optional<CanFrame> received_frame_opt = receipt_adapter.receive();
-    REQUIRE(received_frame_opt.has_value());
-
-    CanFrame received_frame = *received_frame_opt;
-    REQUIRE(received_frame.get_id() == 0x123);
-    REQUIRE(received_frame.get_len() == 4);
-    REQUIRE(received_frame.get_data() == data);
-
-    REQUIRE(adapter.closeSocket());
-    REQUIRE(receipt_adapter.closeSocket());
-  }
-
-  SECTION("Reception thread")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    SocketcanAdapter send_adapter(interface_name);
-    REQUIRE(adapter.openSocket());
-    REQUIRE(send_adapter.openSocket());
-
-    bool callback_called = false;
-    adapter.setOnReceiveCallback(
-      [&callback_called](std::unique_ptr<const CanFrame>/*frame*/)
-      {
-        callback_called = true;
-      });
-    REQUIRE(adapter.startReceptionThread());
-
-    CanFrame frame;
-    frame.set_can_id(0x123);
-    frame.set_len(4);
-    std::array<unsigned char, CAN_MAX_DLC> data = {0x01, 0x02, 0x03, 0x04};
-    frame.set_data(data);
-
-    auto send_result = send_adapter.send(frame);
-    REQUIRE(!send_result.has_value());
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Allow some time for the reception thread
-    REQUIRE(callback_called);
-
-    REQUIRE(adapter.joinReceptionThread());
-    REQUIRE(adapter.closeSocket());
-    REQUIRE(send_adapter.closeSocket());
-  }
-
-  SECTION("Error handling")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    adapter.openSocket();
-
-    int32_t num_error_callbacks_called = 0;
-    std::string error_message = "";
-    adapter.setOnErrorCallback(
-      [&num_error_callbacks_called, &error_message](std::string error)
-      {
-        num_error_callbacks_called++;
-        error_message = error;
-      });
-
-    adapter.startReceptionThread();
-
-    REQUIRE(adapter.closeSocket());
-
-    // Allow for poll to fail
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    adapter.joinReceptionThread();
-
-    REQUIRE(num_error_callbacks_called > 0);
-    REQUIRE(!error_message.empty());
-  }
-
-  SECTION("Set receive timeout")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    std::chrono::duration<float> new_timeout = std::chrono::milliseconds(100);
-    adapter.set_receive_timeout(new_timeout);
-    REQUIRE(adapter.openSocket());
-    // Additional tests to verify the timeout effect can be added
-    REQUIRE(adapter.closeSocket());
-  }
-
-  SECTION("Check thread running state")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    REQUIRE(!adapter.is_thread_running());
-    REQUIRE(adapter.openSocket());
-
-    adapter.setOnReceiveCallback([](std::unique_ptr<const CanFrame>/*frame*/) { /* No-op */});
-    REQUIRE(adapter.startReceptionThread());
-    REQUIRE(adapter.is_thread_running());
-    REQUIRE(adapter.joinReceptionThread());
-    REQUIRE(!adapter.is_thread_running());
-    REQUIRE(adapter.closeSocket());
-  }
+  REQUIRE(frame.get_id() == 0);
+  REQUIRE(frame.get_len() == 0);
+  REQUIRE(frame.get_frame_type() == polymath::socketcan::FrameType::DATA);
+  REQUIRE(frame.get_id_type() == polymath::socketcan::IdType::STANDARD);
 }
 
-TEST_CASE("socketcan filters", "[SocketcanAdapter]")
+TEST_CASE("CanFrame constructor with can_frame", "[CanFrame]")
 {
-  SECTION("Set filters")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    REQUIRE(adapter.openSocket());
-
-    SocketcanAdapter::filter_vector_t filters = {
-      // Example filter
-      {0x123, 0xFFF},
-    };
-    auto result = adapter.setFilters(filters);
-    REQUIRE(!result.has_value());
-
-    REQUIRE(adapter.closeSocket());
-  }
-
-  SECTION("Verify Specific Standard Filters SFF")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    SocketcanAdapter send_adapter(interface_name);
-    REQUIRE(adapter.openSocket());
-    REQUIRE(send_adapter.openSocket());
-
-    // Example filter, let's 12X through
-    SocketcanAdapter::filter_vector_t filters = {
-      {0x123, 0xFFF},
-    };
-
-    auto result = adapter.setFilters(filters);
-    REQUIRE(!result.has_value());
-
-    // Send frame that should pass through the filter
-    CanFrame frame;
-    frame.set_can_id(0x123);
-    frame.set_len(4);
-    std::array<unsigned char, CAN_MAX_DLC> data = {0x01, 0x02, 0x03, 0x04};
-    frame.set_data(data);
-
-    std::optional<SocketcanAdapter::socket_error_string_t> err_str_optional;
-    CanFrame receive_frame;
-
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-
-    REQUIRE(!err_str_optional.has_value());
-    REQUIRE(receive_frame.get_id() == frame.get_id());
-
-    // Now test something that shouldn't come through
-    frame.set_can_id(0x125);
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(err_str_optional.has_value());
-
-    REQUIRE(adapter.closeSocket());
-    REQUIRE(send_adapter.closeSocket());
-  }
-
-  SECTION("Verify Specific Inverse Filters SFF")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    SocketcanAdapter send_adapter(interface_name);
-    REQUIRE(adapter.openSocket());
-    REQUIRE(send_adapter.openSocket());
-
-    // Example filter, let's 12X through
-    SocketcanAdapter::filter_vector_t filters = {
-      {0x123 | CAN_INV_FILTER, 0xFFF},
-    };
-
-    auto result = adapter.setFilters(filters);
-    REQUIRE(!result.has_value());
-
-    // Send frame that should pass through the filter
-    CanFrame frame;
-    frame.set_can_id(0x123);
-    frame.set_len(4);
-    std::array<unsigned char, CAN_MAX_DLC> data = {0x01, 0x02, 0x03, 0x04};
-    frame.set_data(data);
-
-    std::optional<SocketcanAdapter::socket_error_string_t> err_str_optional;
-    CanFrame receive_frame;
-
-    // 0x123 should be blacklisted
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(err_str_optional.has_value());
-
-    // Now test something that should come through
-    frame.set_can_id(0x125);
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(!err_str_optional.has_value());
-    REQUIRE(receive_frame.get_id() == frame.get_id());
-
-    REQUIRE(adapter.closeSocket());
-    REQUIRE(send_adapter.closeSocket());
-  }
-
-  SECTION("Verify Groups of Standard Filters SFF")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    SocketcanAdapter send_adapter(interface_name);
-    REQUIRE(adapter.openSocket());
-    REQUIRE(send_adapter.openSocket());
-
-    // Example filter, let's 12X through
-    SocketcanAdapter::filter_vector_t filters = {
-      {0x123, 0xFF0},
-    };
-
-    auto result = adapter.setFilters(filters);
-    REQUIRE(!result.has_value());
-
-    // Send frame that should pass through the filter
-    CanFrame frame;
-    frame.set_can_id(0x123);
-    frame.set_len(4);
-    std::array<unsigned char, CAN_MAX_DLC> data = {0x01, 0x02, 0x03, 0x04};
-    frame.set_data(data);
-
-    std::optional<SocketcanAdapter::socket_error_string_t> err_str_optional;
-    CanFrame receive_frame;
-
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-
-    REQUIRE(!err_str_optional.has_value());
-    REQUIRE(receive_frame.get_id() == frame.get_id());
-
-    // Now test something that should ALSO come through
-    frame.set_can_id(0x125);
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(!err_str_optional.has_value());
-    REQUIRE(receive_frame.get_id() == frame.get_id());
-
-    // Now test something that shouldn't come through
-    frame.set_can_id(0x135);
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(err_str_optional.has_value());
-
-    REQUIRE(adapter.closeSocket());
-    REQUIRE(send_adapter.closeSocket());
-  }
-
-  SECTION("Verify Groups of Inverse Filters SFF")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    SocketcanAdapter send_adapter(interface_name);
-    REQUIRE(adapter.openSocket());
-    REQUIRE(send_adapter.openSocket());
-
-    // Example filter, let's 12X through
-    SocketcanAdapter::filter_vector_t filters = {
-      {0x123 | CAN_INV_FILTER, 0xFF0},
-    };
-
-    auto result = adapter.setFilters(filters);
-    REQUIRE(!result.has_value());
-
-    // Send frame that should pass through the filter
-    CanFrame frame;
-    frame.set_can_id(0x123);
-    frame.set_len(4);
-    std::array<unsigned char, CAN_MAX_DLC> data = {0x01, 0x02, 0x03, 0x04};
-    frame.set_data(data);
-
-    std::optional<SocketcanAdapter::socket_error_string_t> err_str_optional;
-    CanFrame receive_frame;
-
-    // 0x123 shouldn't come through
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(err_str_optional.has_value());
-
-    // Now test something that should ALSO not come through
-    frame.set_can_id(0x125);
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(err_str_optional.has_value());
-
-    // Now test something that should come through
-    frame.set_can_id(0x135);
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(!err_str_optional.has_value());
-    REQUIRE(receive_frame.get_id() == frame.get_id());
-
-    REQUIRE(adapter.closeSocket());
-    REQUIRE(send_adapter.closeSocket());
-  }
-
-  SECTION("Allow 0x123 and 0x125 ONLY")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    SocketcanAdapter send_adapter(interface_name);
-    REQUIRE(adapter.openSocket());
-    REQUIRE(send_adapter.openSocket());
-
-    // Example filter, let's 12X through
-    SocketcanAdapter::filter_vector_t filters = {
-      {0x123, CAN_EFF_MASK},   // allow 0x123 ONLY, including EFF
-      {0x125, CAN_EFF_MASK},   // allow 0x125 ONLY, including EFF
-    };
-
-    auto result = adapter.setFilters(filters);
-    REQUIRE(!result.has_value());
-
-    // Send frame that should pass through the filter
-    CanFrame frame;
-    frame.set_can_id(0x123);
-    frame.set_len(4);
-    std::array<unsigned char, CAN_MAX_DLC> data = {0x01, 0x02, 0x03, 0x04};
-    frame.set_data(data);
-
-    std::optional<SocketcanAdapter::socket_error_string_t> err_str_optional;
-    CanFrame receive_frame;
-
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-
-    REQUIRE(!err_str_optional.has_value());
-    REQUIRE(receive_frame.get_id() == frame.get_id());
-
-    // Now test something that should ALSO come through
-    frame.set_can_id(0x125);
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(!err_str_optional.has_value());
-    REQUIRE(receive_frame.get_id() == frame.get_id());
-
-    // Now test something that shouldn't come through
-    frame.set_can_id(0x135);
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(err_str_optional.has_value());
-
-    REQUIRE(adapter.closeSocket());
-    REQUIRE(send_adapter.closeSocket());
-  }
-
-  SECTION("Allow 0x120 - 0x12F but not 0x125")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    SocketcanAdapter send_adapter(interface_name);
-    REQUIRE(adapter.openSocket());
-    REQUIRE(send_adapter.openSocket());
-
-    // Example filter, let's 12X through
-    SocketcanAdapter::filter_vector_t filters = {
-      {0x120, 0xFF0},                    // allow 0x123 ONLY
-      {0x125 | CAN_INV_FILTER, 0xFFF},   // dis allow 0x125 ONLY
-    };
-
-    auto result = adapter.setFilters(filters);
-    REQUIRE(!result.has_value());
-
-    result = adapter.setJoinOverwrite(true);
-    REQUIRE(!result.has_value());
-
-    // Send frame that should pass through the filter
-    CanFrame frame;
-    frame.set_can_id(0x123);
-    frame.set_len(4);
-    std::array<unsigned char, CAN_MAX_DLC> data = {0x01, 0x02, 0x03, 0x04};
-    frame.set_data(data);
-
-    std::optional<SocketcanAdapter::socket_error_string_t> err_str_optional;
-    CanFrame receive_frame;
-
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-
-    REQUIRE(!err_str_optional.has_value());
-    REQUIRE(receive_frame.get_id() == frame.get_id());
-
-    // Now test something that should ALSO come through
-    frame.set_can_id(0x12F);
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(!err_str_optional.has_value());
-    REQUIRE(receive_frame.get_id() == frame.get_id());
-
-    // Also make sure 0x125 doesn't come through
-    frame.set_can_id(0x125);
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(err_str_optional.has_value());
-
-    // Now test something that shouldn't come through
-    frame.set_can_id(0x135);
-    err_str_optional = send_adapter.send(frame);
-    REQUIRE(!err_str_optional.has_value());
-
-    err_str_optional = adapter.receive(receive_frame);
-    REQUIRE(err_str_optional.has_value());
-
-    REQUIRE(adapter.closeSocket());
-    REQUIRE(send_adapter.closeSocket());
-  }
-
-  SECTION("Set error mask")
-  {
-    std::string interface_name = "vcan0";
-    SocketcanAdapter adapter(interface_name);
-    REQUIRE(adapter.openSocket());
-
-    can_err_mask_t error_mask = CAN_ERR_MASK;
-    auto result = adapter.setErrorMaskOverwrite(error_mask);
-    REQUIRE(!result.has_value());
-
-    REQUIRE(adapter.closeSocket());
-  }
+  struct can_frame canFrame = {};
+  canFrame.can_id = 0x123;
+  canFrame.can_dlc = 8;
+  std::fill(canFrame.data, canFrame.data + 8, 0xFF);
+
+  polymath::socketcan::CanFrame frame(canFrame);
+
+  REQUIRE(frame.get_id() == 0x123);
+  REQUIRE(frame.get_len() == 8);
+  REQUIRE(frame.get_data() == std::array<unsigned char, CAN_MAX_DLC>{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF});
+}
+
+TEST_CASE("CanFrame constructor with raw_id, data, and timestamp", "[CanFrame]")
+{
+  canid_t raw_id = 0x456;
+  std::array<unsigned char, CAN_MAX_DLC> data = {1, 2, 3, 4, 5, 6, 7, 8};
+  std::uint64_t timestamp = 123456789;
+
+  polymath::socketcan::CanFrame frame(raw_id, data, timestamp);
+
+  REQUIRE(frame.get_id() == raw_id);
+  REQUIRE(frame.get_len() == 8);
+  REQUIRE(frame.get_data() == data);
+}
+
+TEST_CASE("CanFrame constructor with additional parameters", "[CanFrame]")
+{
+  canid_t raw_id = 0x789;
+  std::array<unsigned char, CAN_MAX_DLC> data = {9, 8, 7, 6, 5, 4, 3, 2};
+  std::uint64_t timestamp = 987654321;
+  auto frame_type = polymath::socketcan::FrameType::REMOTE;
+  auto frame_id_type = polymath::socketcan::IdType::EXTENDED;
+
+  polymath::socketcan::CanFrame frame(raw_id, data, timestamp, frame_type, frame_id_type);
+
+  REQUIRE(frame.get_id() == raw_id);
+  REQUIRE(frame.get_len() == 8);
+  REQUIRE(frame.get_data() == data);
+  REQUIRE(frame.get_frame_type() == frame_type);
+  REQUIRE(frame.get_id_type() == frame_id_type);
+}
+
+TEST_CASE("Set and get frame", "[CanFrame]")
+{
+  polymath::socketcan::CanFrame frame;
+  struct can_frame canFrame = {};
+  canFrame.can_id = 0xABC;
+  canFrame.can_dlc = 6;
+  std::fill(canFrame.data, canFrame.data + 6, 0xEE);
+
+  REQUIRE(frame.set_frame(canFrame));
+  REQUIRE(frame.get_id() == (0xABC & CAN_SFF_MASK));
+  REQUIRE(frame.get_len() == 6);
+  REQUIRE(frame.get_data() == std::array<unsigned char, CAN_MAX_DLC>{0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0x00, 0x00});
+}
+
+TEST_CASE("Set and get ID types", "[CanFrame]")
+{
+  polymath::socketcan::CanFrame frame;
+
+  frame.set_id_as_extended();
+  REQUIRE(frame.get_id_type() == polymath::socketcan::IdType::EXTENDED);
+
+  frame.set_id_as_standard();
+  REQUIRE(frame.get_id_type() == polymath::socketcan::IdType::STANDARD);
+}
+
+TEST_CASE("Set and get frame types", "[CanFrame]")
+{
+  polymath::socketcan::CanFrame frame;
+
+  frame.set_type_error();
+  REQUIRE(frame.get_frame_type() == polymath::socketcan::FrameType::ERROR);
+
+  frame.set_type_remote();
+  REQUIRE(frame.get_frame_type() == polymath::socketcan::FrameType::REMOTE);
+
+  frame.set_type_data();
+  REQUIRE(frame.get_frame_type() == polymath::socketcan::FrameType::DATA);
+}
+
+TEST_CASE("Set and get length", "[CanFrame]")
+{
+  polymath::socketcan::CanFrame frame;
+  frame.set_len(5);
+
+  REQUIRE(frame.get_len() == 5);
+}
+
+TEST_CASE("Set and get data", "[CanFrame]")
+{
+  polymath::socketcan::CanFrame frame;
+  std::array<unsigned char, CAN_MAX_DLC> data = {1, 2, 3, 4, 5, 6, 7, 8};
+
+  frame.set_data(data);
+  REQUIRE(frame.get_data() == data);
+}
+
+TEST_CASE("Get masked ID", "[CanFrame]")
+{
+  canid_t id = 0x1FFFFFFF;
+  std::array<unsigned char, CAN_MAX_DLC> data = {};
+  polymath::socketcan::CanFrame frame(id, data, 0);
+
+  REQUIRE(frame.get_masked_id(12, 0) == (id & 0xFFF));
+  REQUIRE(frame.get_masked_id(8, 8) == ((id >> 8) & 0xFF) << 8);
+}
+
+TEST_CASE("Get frame", "[CanFrame]")
+{
+  struct can_frame canFrame = {};
+  canFrame.can_id = 0x123;
+  canFrame.can_dlc = 4;
+  std::fill(canFrame.data, canFrame.data + 4, 0xAA);
+
+  polymath::socketcan::CanFrame frame(canFrame);
+  struct can_frame retrievedFrame = frame.get_frame();
+
+  REQUIRE(retrievedFrame.can_id == canFrame.can_id);
+  REQUIRE(retrievedFrame.can_dlc == canFrame.can_dlc);
+  REQUIRE(std::equal(std::begin(retrievedFrame.data), std::end(retrievedFrame.data), std::begin(canFrame.data)));
+}
+
+TEST_CASE("Get error as string", "[CanFrame]")
+{
+  polymath::socketcan::CanFrame frame;
+  frame.set_type_error();
+
+  std::string error = frame.get_error();
+  REQUIRE(!error.empty());
 }

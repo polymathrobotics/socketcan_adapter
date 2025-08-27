@@ -1,5 +1,26 @@
-#include <functional>
+// Copyright (c) 2025-present Polymath Robotics, Inc. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "socketcan_adapter/socketcan_bridge_node.hpp"
+
+#include <cstdio>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace polymath
 {
 
@@ -10,8 +31,8 @@ SocketcanBridgeNode::SocketcanBridgeNode(const rclcpp::NodeOptions & options)
 : rclcpp_lifecycle::LifecycleNode("socketcan_bridge", "", options)
 {
   declare_parameter("can_interface", std::string("can0"));
-  declare_parameter("can_error_mask", int32_t(CAN_ERR_MASK));
-  declare_parameter("can_filter_list", {}); // vector of strings
+  declare_parameter("can_error_mask", static_cast<int32_t>(CAN_ERR_MASK));
+  declare_parameter("can_filter_list", {});  // vector of strings
   declare_parameter("join_filters", false);
   declare_parameter("receive_timeout_s", SOCKET_RECEIVE_TIMEOUT_S.count());
 }
@@ -33,17 +54,12 @@ SocketcanBridgeNode::rclcpp_lifecycle_callback_return SocketcanBridgeNode::on_co
 
   auto filter_vector = stringVectorToFilterVector(filter_list);
 
-  socketcan_adapter_ = std::make_unique<SocketcanAdapter>(
-    interface_name,
-    std::chrono::duration<float>(receive_timeout_s));
+  socketcan_adapter_ =
+    std::make_unique<SocketcanAdapter>(interface_name, std::chrono::duration<float>(receive_timeout_s));
 
   frame_publisher_ = create_publisher<can_msgs::msg::Frame>("can_rx", 10);
   frame_subscriber_ = create_subscription<can_msgs::msg::Frame>(
-    "can_tx", 10, std::bind(
-      &SocketcanBridgeNode::transmitCanFrame,
-      this,
-      std::placeholders::_1
-  ));
+    "can_tx", 10, std::bind(&SocketcanBridgeNode::transmitCanFrame, this, std::placeholders::_1));
 
   bool success;
   success = socketcan_adapter_->openSocket();
@@ -80,18 +96,10 @@ SocketcanBridgeNode::rclcpp_lifecycle_callback_return SocketcanBridgeNode::on_co
   }
 
   socketcan_adapter_->setOnReceiveCallback(
-    std::bind(
-      &SocketcanBridgeNode::publishCanFrame,
-      this,
-      std::placeholders::_1
-  ));
+    std::bind(&SocketcanBridgeNode::publishCanFrame, this, std::placeholders::_1));
 
   socketcan_adapter_->setOnErrorCallback(
-    std::bind(
-      &SocketcanBridgeNode::socketErrorCallback,
-      this,
-      std::placeholders::_1
-  ));
+    std::bind(&SocketcanBridgeNode::socketErrorCallback, this, std::placeholders::_1));
 
   return LifecycleNode::on_configure(state);
 }
@@ -152,7 +160,7 @@ SocketcanAdapter::filter_vector_t SocketcanBridgeNode::stringVectorToFilterVecto
 {
   SocketcanAdapter::filter_vector_t filter_list;
 
-  struct can_filter can_filter {};
+  struct can_filter can_filter{};
 
   for (std::string filter : filter_vector) {
     if (std::sscanf(filter.c_str(), "%x:%x", &can_filter.can_id, &can_filter.can_mask) == 2) {
@@ -161,10 +169,7 @@ SocketcanAdapter::filter_vector_t SocketcanBridgeNode::stringVectorToFilterVecto
         can_filter.can_id |= CAN_EFF_FLAG;
       }
       filter_list.emplace_back(can_filter);
-    } else if (std::sscanf(
-        filter.c_str(), "%x~%x", &can_filter.can_id,
-        &can_filter.can_mask) == 2)
-    {
+    } else if (std::sscanf(filter.c_str(), "%x~%x", &can_filter.can_id, &can_filter.can_mask) == 2) {
       can_filter.can_id |= CAN_INV_FILTER;
       can_filter.can_mask &= ~CAN_ERR_FLAG;
       if (filter.size() > 8 && filter[8] == '~') {
@@ -181,8 +186,7 @@ SocketcanAdapter::filter_vector_t SocketcanBridgeNode::stringVectorToFilterVecto
 
 void SocketcanBridgeNode::publishCanFrame(std::unique_ptr<const CanFrame> frame)
 {
-  std::unique_ptr<can_msgs::msg::Frame> publishable_frame =
-    std::make_unique<can_msgs::msg::Frame>();
+  std::unique_ptr<can_msgs::msg::Frame> publishable_frame = std::make_unique<can_msgs::msg::Frame>();
 
   publishable_frame->header.stamp = get_clock()->now();
   publishable_frame->id = frame->get_id();
@@ -230,5 +234,5 @@ void SocketcanBridgeNode::transmitCanFrame(can_msgs::msg::Frame::UniquePtr frame
   socketcan_adapter_->send(can_frame);
 }
 
-} // namespace socketcan
-} // namspace polymath
+}  // namespace socketcan
+}  // namespace polymath

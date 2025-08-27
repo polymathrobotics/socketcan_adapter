@@ -1,16 +1,34 @@
+// Copyright (c) 2025-present Polymath Robotics, Inc. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef SOCKETCAN_ADAPTER__SOCKETCAN_ADAPTER_HPP_
 #define SOCKETCAN_ADAPTER__SOCKETCAN_ADAPTER_HPP_
 
-#include <string>
-#include <functional>
 #include <linux/can.h>
+#include <poll.h>
+
 #include <atomic>
 #include <chrono>
+#include <functional>
+#include <memory>
 #include <optional>
+#include <string>
 #include <thread>
-#include <poll.h>
-#include "socketcan_adapter/visibility_control.h"
+#include <vector>
+
 #include "socketcan_adapter/can_frame.hpp"
+#include "socketcan_adapter/visibility_control.h"
 
 namespace polymath
 {
@@ -69,8 +87,7 @@ public:
   /// @param filters reference to a vector of can filters to set for the socket
   /// @return optional error string filled with an error message if any
   std::optional<socket_error_string_t> setFilters(
-    const filter_vector_t & filters,
-    FilterMode mode = FilterMode::OVERWRITE);
+    const filter_vector_t & filters, FilterMode mode = FilterMode::OVERWRITE);
 
   /// Shared ptr to a vector is technically more efficient than a vector of shared_ptrs
   /// TODO: Vectors are harder to justify in MISRA, so might want to use Array
@@ -79,8 +96,7 @@ public:
   /// @param filters INPUT shared ptr to a vector of can filters to set for the socket
   /// @return optional error string filled with an error message if any
   std::optional<socket_error_string_t> setFilters(
-    const std::shared_ptr<filter_vector_t> filters,
-    FilterMode mode = FilterMode::OVERWRITE);
+    const std::shared_ptr<filter_vector_t> filters, FilterMode mode = FilterMode::OVERWRITE);
 
   /// @brief Set the error mask
   /// @param error_mask INPUT error maskfor the socket to pass through
@@ -116,20 +132,17 @@ public:
   /// @brief Stop and join reception thread
   /// @param timeout_s INPUT timeout in seconds, <=0 means no timeout
   /// @return success on closed and joined thread
-  bool joinReceptionThread(
-    const std::chrono::duration<float> & timeout_s = JOIN_RECEPTION_TIMEOUT_S);
+  bool joinReceptionThread(const std::chrono::duration<float> & timeout_s = JOIN_RECEPTION_TIMEOUT_S);
 
   /// @brief Set receive callback function if thread is used
   /// @param callback_function INPUT To be called on receipt of a can frame
   /// @return success on receive callback set
-  bool setOnReceiveCallback(
-    std::function<void(std::unique_ptr<const CanFrame> frame)> && callback_function);
+  bool setOnReceiveCallback(std::function<void(std::unique_ptr<const CanFrame> frame)> && callback_function);
 
   /// @brief Set receive callback function if thread is used
   /// @param callback_function INPUT To be called on receipt of a can frame
   /// @return success on error callback set
-  bool setOnErrorCallback(
-    std::function<void(socket_error_string_t error)> && callback_function);
+  bool setOnErrorCallback(std::function<void(socket_error_string_t error)> && callback_function);
 
   /// @brief Transmit a can frame via socket
   /// @param frame INPUT const reference to the frame
@@ -194,7 +207,7 @@ private:
   bool join_;
 };
 
-}   // namespace socketcan
-} // namespace polymath
+}  // namespace socketcan
+}  // namespace polymath
 
-#endif // SOCKETCAN_ADAPTER__SOCKETCAN_ADAPTER_HPP_
+#endif  // SOCKETCAN_ADAPTER__SOCKETCAN_ADAPTER_HPP_

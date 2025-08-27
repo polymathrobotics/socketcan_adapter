@@ -1,9 +1,24 @@
+// Copyright (c) 2025-present Polymath Robotics, Inc. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef SOCKETCAN_ADAPTER__CAN_FRAME_HPP_
 #define SOCKETCAN_ADAPTER__CAN_FRAME_HPP_
 
 #include <linux/can.h>
-#include <cstdint>
+
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -18,14 +33,14 @@ enum class FrameType : uint8_t
   DATA = 0U,
   ERROR,
   REMOTE
-};     // enum class FrameType
+};  // enum class FrameType
 
 /// @brief Can Frame ID Type, Standard or Extended
 enum class IdType : uint8_t
 {
   STANDARD = 0U,
   EXTENDED
-};     // enum class IdType
+};  // enum class IdType
 
 ///
 /// @class polymath::socketcan::CanFrame
@@ -47,8 +62,10 @@ public:
   /// @param data std::array<unsigned char, CAN_MAX_DLC> enforces C++ std::array for it's core API
   /// @param timestamp uint64_t utc timestamp for the can frame to store
   CanFrame(
-    const canid_t raw_id, const std::array<unsigned char, CAN_MAX_DLC> & data,
-    const uint64_t & timestamp, uint8_t len = CAN_MAX_DLC);
+    const canid_t raw_id,
+    const std::array<unsigned char, CAN_MAX_DLC> & data,
+    const uint64_t & timestamp,
+    uint8_t len = CAN_MAX_DLC);
 
   /// @brief Initialize CanFrame with a partial ID and data defined in std::array
   /// @param raw_id Can ID already generated including error and data information
@@ -57,8 +74,11 @@ public:
   /// @param frame_type DATA, ERROR or REMOTE
   /// @param frame_id_type EXTENDED or Standard
   CanFrame(
-    const canid_t id, const std::array<unsigned char, CAN_MAX_DLC> & data,
-    const uint64_t & timestamp, FrameType & frame_type, IdType & frame_id_type,
+    const canid_t id,
+    const std::array<unsigned char, CAN_MAX_DLC> & data,
+    const uint64_t & timestamp,
+    FrameType & frame_type,
+    IdType & frame_id_type,
     uint8_t len = CAN_MAX_DLC);
 
   /// @brief ~CanFrame is a default destructor for now
@@ -137,13 +157,11 @@ public:
   /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/5
 
 private:
-  struct can_frame frame_
-  {
-  };
+  struct can_frame frame_{};
   uint64_t timestamp_{};
 };
 
-}   // socketcan
-} // polymath
+}  // namespace socketcan
+}  // namespace polymath
 
-#endif // SOCKETCAN_ADAPTER__CAN_FRAME_HPP_
+#endif  // SOCKETCAN_ADAPTER__CAN_FRAME_HPP_

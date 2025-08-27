@@ -5,8 +5,8 @@
   <version>0.1.0</version>
   <description>An Adapter Library for Socketcan with ROS2</description>
   <maintainer email="engineering@polymathrobotics.com">Polymath Engineering</maintainer>
-  <author email="zeerekahmad@hotmail.com">Zeerek Ahmad</author>
   <license>Apache-2.0</license>
+  <author email="zeerekahmad@hotmail.com">Zeerek Ahmad</author>
 
   <buildtool_depend>ament_cmake_ros</buildtool_depend>
 

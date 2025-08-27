@@ -1,11 +1,28 @@
+// Copyright (c) 2025-present Polymath Robotics, Inc. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #ifndef SOCKETCAN_ADAPTER__SOCKETCAN_BRIDGE_NODE_HPP_
 #define SOCKETCAN_ADAPTER__SOCKETCAN_BRIDGE_NODE_HPP_
 
-#include "socketcan_adapter/socketcan_adapter.hpp"
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "can_msgs/msg/frame.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
-#include "can_msgs/msg/frame.hpp"
-
+#include "socketcan_adapter/socketcan_adapter.hpp"
 
 namespace polymath
 {
@@ -14,7 +31,6 @@ namespace socketcan
 
 class SocketcanBridgeNode : public rclcpp_lifecycle::LifecycleNode
 {
-
 public:
   /// @brief Construct the socketcan bridge node
   /// @param options
@@ -24,8 +40,7 @@ public:
   ~SocketcanBridgeNode();
 
 protected:
-  using rclcpp_lifecycle_callback_return =
-    rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
+  using rclcpp_lifecycle_callback_return = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
   /// @brief Configure the Node and socket
   /// @param state
@@ -56,8 +71,7 @@ private:
   /// @brief Convert vector of strings to Filter Vector for socketcan
   /// @param filter_vector Vector of strings to convert
   /// @return filter_vector_t, a vector of filters
-  SocketcanAdapter::filter_vector_t stringVectorToFilterVector(
-    const std::vector<std::string> & filter_vector);
+  SocketcanAdapter::filter_vector_t stringVectorToFilterVector(const std::vector<std::string> & filter_vector);
 
   /// @brief Publish CanFrame, used as a callback for the socketcam adapter
   /// @param frame CanFrame const
@@ -81,7 +95,7 @@ private:
   rclcpp::Subscription<can_msgs::msg::Frame>::SharedPtr frame_subscriber_{nullptr};
 };
 
-} // namespace socketcan
-} // namespace polymath
+}  // namespace socketcan
+}  // namespace polymath
 
-#endif // SOCKETCAN_ADAPTER__SOCKETCAN_BRIDGE_NODE_HPP_
+#endif  // SOCKETCAN_ADAPTER__SOCKETCAN_BRIDGE_NODE_HPP_
