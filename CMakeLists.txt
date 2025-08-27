@@ -98,38 +98,34 @@ install(EXPORT ${PROJECT_NAME}_TARGETS
 # Tests
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  find_package(ament_cmake_gtest REQUIRED)
-  find_package(ament_cmake_test REQUIRED)
-  set(ament_cmake_copyright_FOUND TRUE)
-  set(ament_cmake_cpplint_FOUND TRUE)
+  find_package(Catch2 2 REQUIRED)
+
   ament_lint_auto_find_test_dependencies()
 
-  find_package(Catch2 2 REQUIRED)
-  set(test_dependencies Catch2)
+  # Provides catch_discover_tests()
+  include(Catch)
 
-  add_executable(can_frame_test test/can_frame_test.cpp)
-  target_link_libraries(can_frame_test Catch2::Catch2 socketcan_adapter)
-  ament_target_dependencies(can_frame_test ${test_dependencies} ${dependencies})
-  ament_add_test(
-    can_frame_test
-    GENERATE_RESULT_FOR_RETURN_CODE_ZERO
-    COMMAND ${CMAKE_CURRENT_BINARY_DIR}/can_frame_test -r junit -o test_results/${PROJECT_NAME}/can_frame_test_output.xml
-    ENV CATCH_CONFIG_CONSOLE_WIDTH=120
-    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  # Unit tests
+  add_executable(can_frame_tests
+    test/can_frame_test.cpp
   )
+  target_link_libraries(can_frame_tests
+    PRIVATE socketcan_adapter Catch2::Catch2WithMain
+  )
+  catch_discover_tests(can_frame_tests)
 
-  # Don't try to run vcan-based tests in CI just yet
-  if(NOT DEFINED ENV{CI})
-    add_executable(socketcan_adapter_test test/socketcan_adapter_test.cpp)
-    target_link_libraries(socketcan_adapter_test Catch2::Catch2 socketcan_adapter)
-    ament_target_dependencies(socketcan_adapter_test ${test_dependencies} ${dependencies})
-    ament_add_test(
-      socketcan_adapter_test
-      GENERATE_RESULT_FOR_RETURN_CODE_ZERO
-      COMMAND ${CMAKE_CURRENT_BINARY_DIR}/socketcan_adapter_test -r junit -o test_results/${PROJECT_NAME}/socketcan_adapter_test_output.xml
-      ENV CATCH_CONFIG_CONSOLE_WIDTH=120
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+  # Optional hardware / integration tests (only if CAN_AVAILABLE is set)
+  if(DEFINED ENV{CAN_AVAILABLE})
+    add_executable(socketcan_adapter_hardware_tests
+      test/socketcan_adapter_test.cpp
     )
+    target_link_libraries(socketcan_adapter_hardware_tests
+      PRIVATE socketcan_adapter Catch2::Catch2WithMain
+    )
+    catch_discover_tests(socketcan_adapter_hardware_tests)
+    message(STATUS "CAN_AVAILABLE set - including hardware tests")
+  else()
+    message(STATUS "CAN_AVAILABLE not set - skipping hardware tests (set CAN_AVAILABLE=1 to enable)")
   endif()
 endif()
 
