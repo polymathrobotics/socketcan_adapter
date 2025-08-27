@@ -1,20 +1,39 @@
+# Copyright (c) 2025-present Polymath Robotics, Inc. All rights reserved
 cmake_minimum_required(VERSION 3.8)
 project(socketcan_adapter)
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+# Project-wide language standards
+if(NOT CMAKE_C_STANDARD)
+  set(CMAKE_C_STANDARD 99)
 endif()
 
-# find dependencies
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 17)
+endif()
+
+# Warnings & link hygiene
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+  add_link_options(-Wl,-no-undefined)
+endif()
+
+# Enable ASAN in Debug builds
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  message(STATUS "Enabling AddressSanitizer (ASAN) for Debug build")
+  set(ASAN_FLAGS "-fsanitize=address -fno-omit-frame-pointer")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ASAN_FLAGS}")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${ASAN_FLAGS}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${ASAN_FLAGS}")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${ASAN_FLAGS}")
+endif()
+
+# Dependencies
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_ros REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(can_msgs REQUIRED)
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
 
 set(dependencies
   rclcpp
@@ -23,71 +42,61 @@ set(dependencies
   can_msgs
 )
 
+# Primary library
 add_library(socketcan_adapter SHARED
-            src/socketcan_adapter.cpp
-            src/socketcan_bridge_node.cpp
-            src/can_frame.cpp)
-
-target_compile_features(socketcan_adapter PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+  src/socketcan_adapter.cpp
+  src/socketcan_bridge_node.cpp
+  src/can_frame.cpp
+)
 target_include_directories(socketcan_adapter PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-
-# Causes the visibility macros to use dllexport rather than dllimport,
-# which is appropriate when building the dll but not consuming it.
+  $<INSTALL_INTERFACE:include>
+)
 target_compile_definitions(socketcan_adapter PRIVATE "SOCKETCAN_ADAPTER_BUILDING_LIBRARY")
-
 ament_target_dependencies(socketcan_adapter ${dependencies})
 
-install(
-  DIRECTORY include/
+# Executable using the library
+add_executable(socketcan_bridge src/socketcan_bridge.cpp)
+target_include_directories(socketcan_bridge PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(socketcan_bridge socketcan_adapter)
+ament_target_dependencies(socketcan_bridge ${dependencies})
+
+# Installs
+install(DIRECTORY include/
   DESTINATION include
 )
-install(
-  TARGETS socketcan_adapter
-  EXPORT export_${PROJECT_NAME}
+install(TARGETS socketcan_adapter
+  EXPORT ${PROJECT_NAME}_TARGETS
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-
-add_executable(socketcan_bridge src/socketcan_bridge.cpp)
-target_include_directories(socketcan_bridge PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-target_link_libraries(socketcan_bridge socketcan_adapter)
-
-ament_target_dependencies(socketcan_bridge ${dependencies})
-
 install(TARGETS socketcan_bridge
-  DESTINATION lib/${PROJECT_NAME})
+  DESTINATION lib/${PROJECT_NAME}
+)
+install(EXPORT ${PROJECT_NAME}_TARGETS
+  NAMESPACE ${PROJECT_NAME}::
+  DESTINATION share/${PROJECT_NAME}/cmake
+)
 
+# Tests
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_cmake_test REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 
   find_package(Catch2 2 REQUIRED)
-  set(test_dependencies
-    Catch2
-  )
+  set(test_dependencies Catch2)
 
   add_executable(can_frame_test test/can_frame_test.cpp)
   target_link_libraries(can_frame_test Catch2::Catch2 socketcan_adapter)
-  ament_target_dependencies(
-    can_frame_test
-    ${test_dependencies}
-    ${dependencies}
-  )
-
+  ament_target_dependencies(can_frame_test ${test_dependencies} ${dependencies})
   ament_add_test(
     can_frame_test
     GENERATE_RESULT_FOR_RETURN_CODE_ZERO
@@ -100,10 +109,7 @@ if(BUILD_TESTING)
   if(NOT DEFINED ENV{CI})
     add_executable(socketcan_adapter_test test/socketcan_adapter_test.cpp)
     target_link_libraries(socketcan_adapter_test Catch2::Catch2 socketcan_adapter)
-    ament_target_dependencies(socketcan_adapter_test
-      ${test_dependencies}
-      ${dependencies}
-    )
+    ament_target_dependencies(socketcan_adapter_test ${test_dependencies} ${dependencies})
     ament_add_test(
       socketcan_adapter_test
       GENERATE_RESULT_FOR_RETURN_CODE_ZERO
@@ -112,17 +118,8 @@ if(BUILD_TESTING)
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
     )
   endif()
-
 endif()
 
-ament_export_include_directories(
-  include
-)
-ament_export_libraries(
-  socketcan_adapter
-)
-ament_export_targets(
-  export_${PROJECT_NAME}
-)
-
+# Clean export of library targets (no separate include/lib exports needed)
+ament_export_targets(${PROJECT_NAME}_TARGETS HAS_LIBRARY_TARGET)
 ament_package()
