@@ -1,0 +1,26 @@
+# Gitlab
+/.gitlab-ci-local/
+/.gitlab-ci-local-variables.yml
+/.gitlab-ci-local-env
+/.ci/artifacts/
+
+# Colcon
+/build/
+/install/
+/log/
+/src/platforms/
+/src/external/
+
+# Python
+*.egg-info
+__pycache__
+
+# Ansible
+/.ansible
+/ansible/**/tests/output
+
+# Dev workflows
+/prom_targets.d/
+
+# Claude
+/.claude/
