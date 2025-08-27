@@ -11,14 +11,6 @@
 /src/platforms/
 /src/external/
 
-# Python
-*.egg-info
-__pycache__
-
-# Ansible
-/.ansible
-/ansible/**/tests/output
-
 # Dev workflows
 /prom_targets.d/
 
