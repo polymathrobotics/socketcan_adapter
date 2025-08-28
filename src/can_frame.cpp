@@ -20,9 +20,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace polymath
-{
-namespace socketcan
+namespace polymath::socketcan
 {
 
 CanFrame::CanFrame()
@@ -215,5 +213,4 @@ const std::array<unsigned char, CAN_MAX_DLC> CanFrame::get_data() const
   return data;
 }
 
-}  // namespace socketcan
-}  // namespace polymath
+}  // namespace polymath::socketcan

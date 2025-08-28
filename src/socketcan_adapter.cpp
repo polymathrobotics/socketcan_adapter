@@ -30,9 +30,7 @@
 #include <string>
 #include <utility>
 
-namespace polymath
-{
-namespace socketcan
+namespace polymath::socketcan
 {
 
 SocketcanAdapter::SocketcanAdapter(
@@ -349,5 +347,4 @@ std::string SocketcanAdapter::get_interface()
   return interface_name_;
 }
 
-}  // namespace socketcan
-}  // namespace polymath
+}  // namespace polymath::socketcan

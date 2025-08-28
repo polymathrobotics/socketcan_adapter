@@ -24,9 +24,7 @@
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "socketcan_adapter/socketcan_adapter.hpp"
 
-namespace polymath
-{
-namespace socketcan
+namespace polymath::socketcan
 {
 
 class SocketcanBridgeNode : public rclcpp_lifecycle::LifecycleNode
@@ -95,7 +93,6 @@ private:
   rclcpp::Subscription<can_msgs::msg::Frame>::SharedPtr frame_subscriber_{nullptr};
 };
 
-}  // namespace socketcan
-}  // namespace polymath
+}  // namespace polymath::socketcan
 
 #endif  // SOCKETCAN_ADAPTER__SOCKETCAN_BRIDGE_NODE_HPP_

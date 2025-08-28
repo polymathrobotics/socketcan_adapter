@@ -22,9 +22,7 @@
 #include <memory>
 #include <string>
 
-namespace polymath
-{
-namespace socketcan
+namespace polymath::socketcan
 {
 
 /// @brief Can Frame Types to help passthrough into the CAN Frame
@@ -161,7 +159,6 @@ private:
   uint64_t timestamp_{};
 };
 
-}  // namespace socketcan
-}  // namespace polymath
+}  // namespace polymath::socketcan
 
 #endif  // SOCKETCAN_ADAPTER__CAN_FRAME_HPP_

@@ -28,11 +28,8 @@
 #include <vector>
 
 #include "socketcan_adapter/can_frame.hpp"
-#include "socketcan_adapter/visibility_control.h"
 
-namespace polymath
-{
-namespace socketcan
+namespace polymath::socketcan
 {
 
 /// @brief State of socket, error, open or closed
@@ -207,7 +204,6 @@ private:
   bool join_;
 };
 
-}  // namespace socketcan
-}  // namespace polymath
+}  // namespace polymath::socketcan
 
 #endif  // SOCKETCAN_ADAPTER__SOCKETCAN_ADAPTER_HPP_
