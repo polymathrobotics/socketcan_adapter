@@ -97,10 +97,7 @@ install(EXPORT ${PROJECT_NAME}_TARGETS
 
 # Tests
 if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
   find_package(Catch2 2 REQUIRED)
-
-  ament_lint_auto_find_test_dependencies()
 
   # Provides catch_discover_tests()
   include(Catch)

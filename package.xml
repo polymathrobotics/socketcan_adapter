@@ -10,16 +10,13 @@
 
   <buildtool_depend>ament_cmake_ros</buildtool_depend>
 
-  <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_lint_common</test_depend>
-
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>rclcpp_components</depend>
   <depend>can_msgs</depend>
 
   <test_depend>ament_cmake_test</test_depend>
-  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>catch2</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
