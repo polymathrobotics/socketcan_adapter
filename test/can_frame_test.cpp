@@ -17,7 +17,11 @@
 #include <cstdint>
 #include <string>
 
-#include <catch2/catch.hpp>
+#if __has_include(<catch2/catch_all.hpp>)
+  #include <catch2/catch_all.hpp>  // v3
+#else
+  #include <catch2/catch.hpp>  // v2
+#endif
 
 #include "socketcan_adapter/socketcan_adapter.hpp"
 

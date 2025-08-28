@@ -82,7 +82,7 @@ if(BUILD_HUMBLE)
   set(dependencies rclcpp rclcpp_lifecycle rclcpp_components can_msgs)
   ament_target_dependencies(socketcan_adapter ${dependencies})
   ament_target_dependencies(socketcan_bridge ${dependencies})
-  target_link_libraries(socketcan_bridge PRIVATE socketcan_adapter)
+  target_link_libraries(socketcan_bridge socketcan_adapter)
 else()
   target_link_libraries(socketcan_adapter PUBLIC
     ${can_msgs_TARGETS}
