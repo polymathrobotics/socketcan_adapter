@@ -43,10 +43,10 @@ endif()
 if(NOT DEFINED BUILD_HUMBLE)
   if(DEFINED ENV{ROS_DISTRO} AND "$ENV{ROS_DISTRO}" STREQUAL "humble")
     set(BUILD_HUMBLE TRUE)
-    message(STATUS "ROS_DISTRO=humble -> using legacy ament_target_dependencies + Catch2 v2")
+    message(STATUS "ROS_DISTRO=humble -> using Catch2 v2")
   else()
     set(BUILD_HUMBLE FALSE)
-    message(STATUS "Using modern target_link_libraries + Catch2 v3 (Jazzy/Rolling)")
+    message(STATUS "ROS_DISTRO>humble -> Catch2 v3 (Jazzy/Rolling)")
   endif()
 endif()
 
@@ -78,21 +78,14 @@ target_include_directories(socketcan_bridge PUBLIC
 )
 
 # Linkage: Humble keeps ament_target_dependencies; Jazzy/Rolling use imported targets
-if(BUILD_HUMBLE)
-  set(dependencies rclcpp rclcpp_lifecycle rclcpp_components can_msgs)
-  ament_target_dependencies(socketcan_adapter ${dependencies})
-  ament_target_dependencies(socketcan_bridge ${dependencies})
-  target_link_libraries(socketcan_bridge socketcan_adapter)
-else()
-  target_link_libraries(socketcan_adapter PUBLIC
-    ${can_msgs_TARGETS}
-    rclcpp::rclcpp
-    rclcpp_components::component
-    rclcpp_components::component_manager
-    rclcpp_lifecycle::rclcpp_lifecycle
-  )
-  target_link_libraries(socketcan_bridge PUBLIC socketcan_adapter)
-endif()
+target_link_libraries(socketcan_adapter PUBLIC
+  ${can_msgs_TARGETS}
+  rclcpp::rclcpp
+  rclcpp_components::component
+  rclcpp_components::component_manager
+  rclcpp_lifecycle::rclcpp_lifecycle
+)
+target_link_libraries(socketcan_bridge PUBLIC socketcan_adapter)
 
 # Installs
 install(DIRECTORY include/ DESTINATION include)
