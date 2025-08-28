@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# Copyright (c) 2025-present Polymath Robotics, Inc. All rights reserved
 cmake_minimum_required(VERSION 3.8)
 project(socketcan_adapter)
 
