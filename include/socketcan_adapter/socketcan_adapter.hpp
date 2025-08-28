@@ -156,6 +156,11 @@ public:
   /// @return optional error string filled with an error message if any
   std::optional<socket_error_string_t> send(const std::shared_ptr<const CanFrame> frame);
 
+  /// @brief Transmit a can frame via socket
+  /// @param frame Linux CAN frame to send
+  /// @return optional error string filled with an error message if any
+  std::optional<socket_error_string_t> send(const can_frame & frame);
+
   /// @brief Set receive timeout
   /// @param reecive_timeout_s std::chrono::duration<float> sets receive timeout in seconds
   void set_receive_timeout(const std::chrono::duration<float> & recive_timeout_s);

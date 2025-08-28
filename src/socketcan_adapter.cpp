@@ -226,6 +226,11 @@ std::optional<SocketcanAdapter::socket_error_string_t> SocketcanAdapter::send(
            : std::nullopt;
 }
 
+std::optional<SocketcanAdapter::socket_error_string_t> SocketcanAdapter::send(const can_frame & frame)
+{
+  return send(polymath::socketcan::CanFrame(frame));
+}
+
 std::optional<SocketcanAdapter::socket_error_string_t> SocketcanAdapter::sendFilters()
 {
   socket_error_string_t error_output("");
