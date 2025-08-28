@@ -1,25 +1,38 @@
+// Copyright (c) 2025-present Polymath Robotics, Inc. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "socketcan_adapter/can_frame.hpp"
-#include <stdexcept>
+
 #include <linux/can/error.h>
 
-namespace polymath
-{
-namespace socketcan
+#include <algorithm>
+#include <stdexcept>
+#include <string>
+
+namespace polymath::socketcan
 {
 
 CanFrame::CanFrame()
 : frame_{}
-{
-}
+{}
 
 CanFrame::CanFrame(const struct can_frame & frame)
 : frame_(frame)
-{
-}
+{}
 
 CanFrame::CanFrame(
-  const canid_t raw_id, const std::array<unsigned char, CAN_MAX_DLC> & data,
-  const uint64_t & timestamp, uint8_t len)
+  const canid_t raw_id, const std::array<unsigned char, CAN_MAX_DLC> & data, const uint64_t & timestamp, uint8_t len)
 : timestamp_(timestamp)
 {
   set_can_id(raw_id);
@@ -28,8 +41,12 @@ CanFrame::CanFrame(
 }
 
 CanFrame::CanFrame(
-  const canid_t id, const std::array<unsigned char, CAN_MAX_DLC> & data,
-  const uint64_t & timestamp, FrameType & frame_type, IdType & frame_id_type, uint8_t len)
+  const canid_t id,
+  const std::array<unsigned char, CAN_MAX_DLC> & data,
+  const uint64_t & timestamp,
+  FrameType & frame_type,
+  IdType & frame_id_type,
+  uint8_t len)
 : timestamp_(timestamp)
 {
   set_can_id(id);
@@ -196,5 +213,4 @@ const std::array<unsigned char, CAN_MAX_DLC> CanFrame::get_data() const
   return data;
 }
 
-}   // socketcan
-} // polymath
+}  // namespace polymath::socketcan

@@ -4,21 +4,16 @@
   <name>socketcan_adapter</name>
   <version>0.1.0</version>
   <description>An Adapter Library for Socketcan with ROS2</description>
-  <maintainer email="zeerek@polymathrobotics.com">zeerek</maintainer>
+  <maintainer email="engineering@polymathrobotics.com">Polymath Engineering</maintainer>
   <license>Apache-2.0</license>
-
-  <buildtool_depend>ament_cmake_ros</buildtool_depend>
-
-  <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_lint_common</test_depend>
+  <author email="zeerekahmad@hotmail.com">Zeerek Ahmad</author>
 
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
-  <depend>rclcpp_components</depend>
   <depend>can_msgs</depend>
 
   <test_depend>ament_cmake_test</test_depend>
-  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>catch2</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

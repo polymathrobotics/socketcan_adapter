@@ -5,11 +5,13 @@ Socketcan Driver Library for Linux based PCs and ROS2 nodes
 Socketcan adapter can be built with the ros2 ament toolchain. All requirements can be installed via rosdep
 
 Install the dependencies!
+
 ```bash
 rosdep install -i -y --from-paths socketcan_adapter
 ```
 
 Build it!
+
 ```bash
 colcon build --packages-up-to socketcan_adapter
 ```
@@ -27,7 +29,7 @@ Example highlights:
 
 Does not implement CanFD yet.
 
-### SocketcanAdapter 
+### SocketcanAdapter
 `SocketcanAdapter` Class - The `SocketcanAdapter` abstracts and manages socket operations for CAN communication. It initializes and configures the socket, applies filters, and handles CAN frame transmission and reception. The adapter offers error handling, thread-safe operations, and optional callback functions for asynchronous frame and error processing.
 
 Key features:
@@ -83,7 +85,7 @@ int main() {
         adapter.closeSocket();
         return -1;
     }
-    
+
     // Step 4: Prepare a CAN frame to send
     canid_t raw_id = 0x123;
     std::array<unsigned char, CAN_MAX_DLC> data = {0x11, 0x22, 0x33, 0x44};
@@ -113,6 +115,7 @@ int main() {
 To make usage even easier, this package comes with a ROS2 node with default settings!
 
 ## Launch
+
 ```bash
 ros2 launch socketcan_adapter socketcan_bridge_launch.py
 ```
@@ -123,4 +126,4 @@ launch args:
 - `can_filter_list`: can filters (default: [])
 - `join_filters`: use joining logic for filters (default: false)
 - `auto_configure`: automatically configure the lifecycle node
-- `auto_activate`: automatically activate the lifecycle node post configuration 
+- `auto_activate`: automatically activate the lifecycle node post configuration
