@@ -52,7 +52,6 @@ find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_ros REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
-find_package(rclcpp_components REQUIRED)
 find_package(can_msgs REQUIRED)
 
 # Primary library
