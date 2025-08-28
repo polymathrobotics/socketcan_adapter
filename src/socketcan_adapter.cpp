@@ -25,6 +25,7 @@
 
 #include <cerrno>
 #include <cstring>
+#include <future>
 #include <memory>
 #include <optional>
 #include <string>
@@ -331,20 +332,15 @@ bool SocketcanAdapter::joinReceptionThread(const std::chrono::duration<float> & 
 {
   stop_thread_requested_ = true;
 
-  auto start_time = std::chrono::steady_clock::now();
-  // Check thread running to tell when to join the thread
-  while (thread_running_ && ((std::chrono::steady_clock::now() - start_time) < timeout_s)) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }
-
-  // Attempt to force joining at this point
-
   if (can_receive_thread_.joinable()) {
-    can_receive_thread_.join();
-    return true;
-  } else {
-    return false;
+    // Use std::async to wait asynchronously for the thread to stop
+    std::future<void> join_future = std::async(std::launch::async, [this] { can_receive_thread_.join(); });
+
+    // Wait for the thread to stop within the timeout period
+    return join_future.wait_for(timeout_s) == std::future_status::ready;
   }
+
+  return false;
 }
 
 std::string SocketcanAdapter::get_interface()
