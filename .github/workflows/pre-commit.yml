@@ -1,7 +1,7 @@
 ---
 name: pre-commit
 
-on:  # yamllint disable-line
+"on":
   pull_request:
   push:
     branches: [main]

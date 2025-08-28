@@ -16,9 +16,6 @@ cmake_minimum_required(VERSION 3.8)
 project(socketcan_adapter)
 
 # Project-wide language standards
-if(NOT CMAKE_C_STANDARD)
-  set(CMAKE_C_STANDARD 99)
-endif()
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 17)
 endif()
@@ -77,12 +74,9 @@ target_include_directories(socketcan_bridge PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
-# Linkage: Humble keeps ament_target_dependencies; Jazzy/Rolling use imported targets
 target_link_libraries(socketcan_adapter PUBLIC
   ${can_msgs_TARGETS}
   rclcpp::rclcpp
-  rclcpp_components::component
-  rclcpp_components::component_manager
   rclcpp_lifecycle::rclcpp_lifecycle
 )
 target_link_libraries(socketcan_bridge PUBLIC socketcan_adapter)
@@ -102,8 +96,8 @@ install(EXPORT ${PROJECT_NAME}_TARGETS
 )
 
 # Tests
-include(CTest)
 if(BUILD_TESTING)
+  include(CTest)
   # Find correct Catch2 major version per distro
   if(BUILD_HUMBLE)
     find_package(Catch2 2 REQUIRED)

@@ -1,6 +1,4 @@
 ---
-# C++ Formatting rules for Polymath Code Standard - https://gitlab.com/polymathrobotics/polymath_code_standard
-# Synced from origin - DO NOT EDIT IN CONSUMING REPOSITORY
 
 # See https://releases.llvm.org/14.0.0/tools/clang/docs/ClangFormatStyleOptions.html for documentation of these options
 BasedOnStyle: Google

@@ -1,18 +1,4 @@
-# Gitlab
-/.gitlab-ci-local/
-/.gitlab-ci-local-variables.yml
-/.gitlab-ci-local-env
-/.ci/artifacts/
-
 # Colcon
 /build/
 /install/
 /log/
-/src/platforms/
-/src/external/
-
-# Dev workflows
-/prom_targets.d/
-
-# Claude
-/.claude/

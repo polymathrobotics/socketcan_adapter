@@ -1,7 +1,4 @@
 ---
-# Pre-commit config for Polymath Code Standard - https://gitlab.com/polymathrobotics/polymath_code_standard
-# Synced from origin - DO NOT EDIT IN CONSUMING REPOSITORY
-
 # See https://pre-commit.com for more information on these settings
 repos:
   # Generally useful checks provided by pre-commit
@@ -13,8 +10,6 @@ repos:
       - id: check-case-conflict
       - id: check-merge-conflict
       - id: check-shebang-scripts-are-executable
-        # exclude ansible plugin modules as they must not be executable
-        exclude: ^ansible/collections/ansible_collections/polymath/core/plugins/modules/
       - id: check-symlinks
       - id: check-toml
       - id: check-xml
@@ -22,11 +17,6 @@ repos:
       - id: forbid-submodules
       - id: mixed-line-ending
       - id: trailing-whitespace
-  # JSON (This one supports comments, vs the one in pre-commit-hooks repo does not)
-  - repo: https://gitlab.com/bmares/check-json5
-    rev: v1.0.0
-    hooks:
-      - id: check-json5
   # Python
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.5
@@ -69,22 +59,6 @@ repos:
     hooks:
       - id: cmakelint
         args: [--linelength=140]
-  # Bash / Shell scripts
-  - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
-    hooks:
-      - id: shellcheck
-        args: [-e, SC1091]
-  # Docker/Container files
-  - repo: https://github.com/AleksaC/hadolint-py
-    rev: v2.12.1b3
-    hooks:
-      - id: hadolint
-        args: [
-          --ignore, SC1091,
-          --ignore, DL3006,
-          --ignore, DL3008,
-        ]
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
     hooks:
@@ -105,13 +79,3 @@ repos:
           --comment-style, '//',
           --allow-past-years,
         ]
-  # Ansible
-  - repo: https://github.com/ansible/ansible-lint
-    rev: v25.2.1
-    hooks:
-      - id: ansible-lint
-        entry: /bin/sh -c "ANSIBLE_COLLECTIONS_PATH=ansible/collections python3 -m ansiblelint -v --force-color ansible/"
-        always_run: false
-        files: ^ansible/
-        additional_dependencies:
-          - ansible
