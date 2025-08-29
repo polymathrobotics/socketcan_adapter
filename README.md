@@ -1,129 +1,132 @@
-# socketcan_adapter
-Socketcan Driver Library for Linux based PCs and ROS2 nodes
+# SocketCAN Adapter
 
-# Build
-Socketcan adapter can be built with the ros2 ament toolchain. All requirements can be installed via rosdep
+A modular SocketCAN driver library and ROS2 integration for Linux-based systems. This repository provides both a standalone C++ library and ROS2 wrapper for easy integration with robotics applications.
 
-Install the dependencies!
+## Architecture
+
+This package is split into two complementary components:
+
+### 📚 [socketcan_adapter](./socketcan_adapter/README.md)
+Pure C++ SocketCAN library with no ROS dependencies.
+- Core SocketCAN functionality
+- Thread-safe operations
+- Callback-based asynchronous processing
+- Configurable filters and error handling
+- Can be used in non-ROS projects
+
+### 🤖 [socketcan_adapter_ros](./socketcan_adapter_ros/README.md)
+ROS2 wrapper providing nodes and launch files.
+- ROS2 lifecycle node
+- Integration with `can_msgs`
+- Launch files with parameter support
+- Depends on the core `socketcan_adapter` library
+
+## Quick Start
+
+### Build Both Packages
 
 ```bash
-rosdep install -i -y --from-paths socketcan_adapter
+# Install dependencies
+rosdep install -i -y --from-paths .
+
+# Build everything
+colcon build --packages-up-to socketcan_adapter_ros
 ```
 
-Build it!
+### Launch ROS2 CAN Bridge
 
 ```bash
-colcon build --packages-up-to socketcan_adapter
+ros2 launch socketcan_adapter_ros socketcan_bridge_launch.py
 ```
 
-# Library
-## Classes of Note
-### CanFrame
-`CanFrame` Class - This class wraps the C-level `can_frame` structure, encapsulating CAN message details like the CAN ID, data, timestamp, and frame type (DATA, ERROR, or REMOTE). By providing a robust API for creating and managing CAN frames, CanFrame simplifies interaction with raw CAN data and offers utilities like ID masking, setting error types, and timestamp management.
-
-Example highlights:
-
-- Flexible constructors for `can_frame` struct and raw data inputs.
-- Functions to modify frame type, ID type (standard/extended), and length.
-- Helper methods to access CAN frame data, ID, and timestamp.
-
-Does not implement CanFD yet.
-
-### SocketcanAdapter
-`SocketcanAdapter` Class - The `SocketcanAdapter` abstracts and manages socket operations for CAN communication. It initializes and configures the socket, applies filters, and handles CAN frame transmission and reception. The adapter offers error handling, thread-safe operations, and optional callback functions for asynchronous frame and error processing.
-
-Key features:
-
-- Configurable receive timeout and threading for reception.
-- `setFilters` and setErrorMaskOverwrite to apply CAN filters and error masks.
-- A callback-based system for handling received frames and errors asynchronously.
-- Supports multiple send and receive methods, including `std::shared_ptr` for efficient memory management.
-- Together, `CanFrame` and `SocketcanAdapter` simplify interaction with CAN networks, allowing developers to focus on - high-level application logic instead of low-level socket and data handling.
-
-## Sample Usage
+### Use Core Library in C++
 
 ```c++
 #include "socketcan_adapter/socketcan_adapter.hpp"
-#include "socketcan_adapter/can_frame.hpp"
-#include <iostream>
-#include <thread>
-#include <vector>
 
 using namespace polymath::socketcan;
 
-int main() {
-    // Initialize SocketcanAdapter with the CAN interface name (e.g., "can0")
-    SocketcanAdapter adapter("can0");
-
-    // Open the CAN socket
-    if (!adapter.openSocket()) {
-        std::cerr << "Failed to open CAN socket!" << std::endl;
-        return -1;
-    }
-
-    // Step 1: Set up a filter to allow only messages with ID 0x123
-    std::vector<struct can_filter> filters = {{0x123, CAN_SFF_MASK}};
-    if (auto error = adapter.setFilters(filters)) {
-        std::cerr << "Error setting filters: " << *error << std::endl;
-        return -1;
-    }
-
-    // Step 2: Set up a callback function to handle received CAN frames
-    adapter.setOnReceiveCallback([](std::unique_ptr<const CanFrame> frame) {
-        std::cout << "Received CAN frame with ID: " << std::hex << frame->get_id() << std::endl;
-        auto data = frame->get_data();
-        std::cout << "Data: ";
-        for (const auto& byte : data) {
-            std::cout << std::hex << static_cast<int>(byte) << " ";
-        }
-        std::cout << std::endl;
-    });
-
-    // Step 3: Start the reception thread
-    if (!adapter.startReceptionThread()) {
-        std::cerr << "Failed to start reception thread!" << std::endl;
-        adapter.closeSocket();
-        return -1;
-    }
-
-    // Step 4: Prepare a CAN frame to send
-    canid_t raw_id = 0x123;
-    std::array<unsigned char, CAN_MAX_DLC> data = {0x11, 0x22, 0x33, 0x44};
-    uint64_t timestamp = 0; // Placeholder timestamp
-    CanFrame frame(raw_id, data, timestamp);
-
-    // Step 5: Send the CAN frame
-    if (auto error = adapter.send(frame)) {
-        std::cerr << "Failed to send CAN frame: " << *error << std::endl;
-    } else {
-        std::cout << "Sent CAN frame with ID: " << std::hex << raw_id << std::endl;
-    }
-
-    // Keep the application running for 10 seconds to allow for frame reception
-    std::this_thread::sleep_for(std::chrono::seconds(10));
-
-    // Step 5: Clean up - close the socket and stop the reception thread
-    adapter.joinReceptionThread();
-    adapter.closeSocket();
-
-    return 0;
-}
-
+SocketcanAdapter adapter("can0");
+adapter.openSocket();
+// ... see socketcan_adapter README for full example
 ```
 
-# ROS2 Node
-To make usage even easier, this package comes with a ROS2 node with default settings!
+## Requirements
 
-## Launch
+### System Requirements
+- Linux with SocketCAN support
+- C++17 compatible compiler
+- CMake 3.8+
+
+### ROS2 Requirements (for ROS package only)
+- ROS2 Humble or later
+- can_msgs package
+
+## Testing
+
+### Core Library Tests
 
 ```bash
-ros2 launch socketcan_adapter socketcan_bridge_launch.py
+colcon test --packages-select socketcan_adapter
 ```
 
-launch args:
-- `can_interface`: can interface to connect to (default: 0)
-- `can_error_mask`: can error mask (default: 0x1FFFFFFF aka everything allowed)
-- `can_filter_list`: can filters (default: [])
-- `join_filters`: use joining logic for filters (default: false)
-- `auto_configure`: automatically configure the lifecycle node
-- `auto_activate`: automatically activate the lifecycle node post configuration
+### ROS2 Package Tests
+
+```bash
+colcon test --packages-select socketcan_adapter_ros
+```
+
+### Hardware Tests
+Set `CAN_AVAILABLE=1` to enable hardware-dependent tests:
+
+```bash
+CAN_AVAILABLE=1 colcon test --packages-select socketcan_adapter
+```
+
+## Virtual CAN Setup
+
+For testing without hardware:
+
+```bash
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set up vcan0
+```
+
+## Contributing
+
+We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for details on:
+- Code style and standards
+- Testing requirements
+- Pull request process
+- Issue reporting
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes.
+
+## Support
+
+- 📖 **Documentation**: See individual package READMEs for detailed usage
+- 🐛 **Bug Reports**: Please use GitHub Issues with detailed reproduction steps
+- 💡 **Feature Requests**: Open a GitHub Issue with your use case
+- 📧 **Contact**: engineering@polymathrobotics.com
+
+## Security
+
+If you discover a security vulnerability, please send an email to security@polymathrobotics.com. All security vulnerabilities will be promptly addressed.
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full license text.
+
+## Authors & Maintainers
+
+- **Zeerek Ahmad** - Original author - zeerekahmad@hotmail.com
+- **Polymath Robotics Engineering Team** - Maintainers - engineering@polymathrobotics.com
+
+## Acknowledgments
+
+- Linux SocketCAN developers for the underlying CAN bus support
+- ROS2 community for the robotics middleware framework
+- Contributors and users who help improve this project
