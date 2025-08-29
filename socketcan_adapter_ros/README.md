@@ -2,15 +2,6 @@
 
 A ROS2 wrapper for the socketcan_adapter library, providing ROS2 nodes and launch files for easy integration with ROS2 systems.
 
-## Features
-
-- ROS2 lifecycle node for CAN bridge functionality
-- Publishes received CAN frames as `can_msgs/msg/Frame`
-- Subscribes to CAN frames for transmission
-- Configurable CAN interface, filters, and error masks
-- Launch file with comprehensive parameter support
-- Integration with ROS2 parameter system
-
 ## Dependencies
 
 - [socketcan_adapter](../socketcan_adapter/README.md) - Core SocketCAN library
@@ -87,12 +78,7 @@ ros2 lifecycle set /socketcan_bridge activate
 
 ## Node Details
 
-The `socketcan_bridge` node is implemented as a ROS2 lifecycle node, providing the following states:
-
-1. **Unconfigured** - Initial state
-2. **Inactive** - Node is configured but not processing messages
-3. **Active** - Node is actively bridging CAN messages
-4. **Finalized** - Node is shut down
+The `socketcan_bridge` node is implemented as a ROS2 lifecycle node
 
 ### Parameters
 
@@ -103,32 +89,9 @@ The node accepts the following ROS2 parameters:
 - `filters` (array): List of CAN filter objects with `id` and `mask` fields
 - `join_filters` (bool): Whether to use joining logic for multiple filters
 
-## Testing
-
-Run tests:
-
-```bash
-colcon test --packages-select socketcan_adapter_ros
-```
-
 ## Requirements
 
 - ROS2 (Humble or later)
 - Linux system with SocketCAN support
 - [socketcan_adapter](../socketcan_adapter/README.md) library
 - Active CAN interface (real or virtual)
-
-## Creating Virtual CAN Interface
-
-For testing without hardware:
-
-```bash
-# Load the vcan module
-sudo modprobe vcan
-
-# Create a virtual CAN interface
-sudo ip link add dev vcan0 type vcan
-
-# Bring up the interface
-sudo ip link set up vcan0
-```

@@ -1,15 +1,6 @@
 # socketcan_adapter
 
-A pure C++ SocketCAN driver library for Linux-based systems. This library provides a high-level interface to Linux SocketCAN without any ROS dependencies.
-
-## Features
-
-- Pure C++ implementation with no ROS runtime dependencies
-- Thread-safe CAN frame transmission and reception
-- Configurable filters and error masks
-- Callback-based asynchronous processing
-- Comprehensive error handling
-- Support for standard and extended CAN IDs
+A C++ SocketCAN driver library for Linux-based systems. This library provides a high-level interface to Linux SocketCAN without any ROS dependencies.
 
 ## Classes of Note
 
@@ -20,7 +11,7 @@ Example highlights:
 
 - Flexible constructors for `can_frame` struct and raw data inputs.
 - Functions to modify frame type, ID type (standard/extended), and length.
-- Helper methods to access CAN frame data, ID, and timestamp.
+- Helper methods to access CAN frame data, ID.
 
 Does not implement CanFD yet.
 
@@ -140,9 +131,18 @@ colcon test --packages-select socketcan_adapter
 
 Note: Hardware tests require `CAN_AVAILABLE=1` environment variable and a functioning CAN interface.
 
-## Requirements
 
-- Linux system with SocketCAN support
-- C++17 compatible compiler
-- CMake 3.8+
-- Catch2 (for testing)
+### Creating Virtual CAN Interface
+
+For testing without hardware:
+
+```bash
+# Load the vcan module
+sudo modprobe vcan
+
+# Create a virtual CAN interface
+sudo ip link add dev vcan0 type vcan
+
+# Bring up the interface
+sudo ip link set up vcan0
+```
