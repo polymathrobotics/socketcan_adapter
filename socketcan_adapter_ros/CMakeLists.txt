@@ -13,7 +13,7 @@
 # limitations under the License.
 
 cmake_minimum_required(VERSION 3.8)
-project(socketcan_adapter)
+project(socketcan_adapter_ros)
 
 # Project-wide language standards
 if(NOT CMAKE_CXX_STANDARD)
@@ -52,18 +52,17 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(can_msgs REQUIRED)
+find_package(socketcan_adapter REQUIRED)
 
 # Primary library
-add_library(socketcan_adapter SHARED
-  src/socketcan_adapter.cpp
+add_library(socketcan_adapter_ros SHARED
   src/socketcan_bridge_node.cpp
-  src/can_frame.cpp
 )
-target_include_directories(socketcan_adapter PUBLIC
+target_include_directories(socketcan_adapter_ros PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
-target_compile_definitions(socketcan_adapter PRIVATE "SOCKETCAN_ADAPTER_BUILDING_LIBRARY")
+target_compile_definitions(socketcan_adapter_ros PRIVATE "SOCKETCAN_ADAPTER_ROS_BUILDING_LIBRARY")
 
 # Executable using the library
 add_executable(socketcan_bridge src/socketcan_bridge.cpp)
@@ -72,16 +71,17 @@ target_include_directories(socketcan_bridge PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(socketcan_adapter PUBLIC
+target_link_libraries(socketcan_adapter_ros PUBLIC
   ${can_msgs_TARGETS}
   rclcpp::rclcpp
   rclcpp_lifecycle::rclcpp_lifecycle
+  socketcan_adapter::socketcan_adapter
 )
-target_link_libraries(socketcan_bridge PUBLIC socketcan_adapter)
+target_link_libraries(socketcan_bridge PUBLIC socketcan_adapter_ros)
 
 # Installs
 install(DIRECTORY include/ DESTINATION include)
-install(TARGETS socketcan_adapter
+install(TARGETS socketcan_adapter_ros
   EXPORT ${PROJECT_NAME}_TARGETS
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -93,42 +93,7 @@ install(EXPORT ${PROJECT_NAME}_TARGETS
   DESTINATION share/${PROJECT_NAME}/cmake
 )
 
-# Tests
-if(BUILD_TESTING)
-  include(CTest)
-  # Find correct Catch2 major version per distro
-  if(BUILD_HUMBLE)
-    find_package(Catch2 2 REQUIRED)
-  else()
-    find_package(Catch2 3 REQUIRED)
-  endif()
-
-  # Try Catch's CMake helpers if present; otherwise we’ll fall back
-  include(Catch OPTIONAL)
-
-  add_executable(can_frame_tests test/can_frame_test.cpp)
-  target_link_libraries(can_frame_tests PRIVATE socketcan_adapter Catch2::Catch2WithMain)
-
-  if(COMMAND catch_discover_tests)
-    catch_discover_tests(can_frame_tests)
-  else()
-    add_test(NAME can_frame_tests COMMAND can_frame_tests)
-  endif()
-
-  if(DEFINED ENV{CAN_AVAILABLE})
-    add_executable(socketcan_adapter_hardware_tests test/socketcan_adapter_test.cpp)
-    target_link_libraries(socketcan_adapter_hardware_tests PRIVATE socketcan_adapter Catch2::Catch2WithMain)
-    if(COMMAND catch_discover_tests)
-      catch_discover_tests(socketcan_adapter_hardware_tests)
-    else()
-      add_test(NAME socketcan_adapter_hardware_tests COMMAND socketcan_adapter_hardware_tests)
-    endif()
-    message(STATUS "CAN_AVAILABLE set - including hardware tests")
-  else()
-    message(STATUS "CAN_AVAILABLE not set - skipping hardware tests (set CAN_AVAILABLE=1 to enable)")
-  endif()
-endif()
-
 # Export
 ament_export_targets(${PROJECT_NAME}_TARGETS HAS_LIBRARY_TARGET)
+ament_export_dependencies(socketcan_adapter rclcpp rclcpp_lifecycle can_msgs)
 ament_package()

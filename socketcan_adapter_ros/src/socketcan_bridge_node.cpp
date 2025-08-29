@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "socketcan_adapter/socketcan_bridge_node.hpp"
+#include "socketcan_adapter_ros/socketcan_bridge_node.hpp"
 
 #include <cstdio>
 #include <functional>

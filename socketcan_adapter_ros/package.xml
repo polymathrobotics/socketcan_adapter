@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>socketcan_adapter</name>
+  <name>socketcan_adapter_ros</name>
   <version>0.1.0</version>
   <description>An Adapter Library for Socketcan with ROS2</description>
   <maintainer email="engineering@polymathrobotics.com">Polymath Engineering</maintainer>
@@ -11,6 +11,7 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>can_msgs</depend>
+  <depend>socketcan_adapter</depend>
 
   <test_depend>ament_cmake_test</test_depend>
   <test_depend>catch2</test_depend>

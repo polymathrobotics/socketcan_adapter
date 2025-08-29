@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>socketcan_adapter</name>
+  <version>0.1.0</version>
+  <description>An Adapter Library for Socketcan using Callback Patterns</description>
+  <maintainer email="engineering@polymathrobotics.com">Polymath Engineering</maintainer>
+  <license>Apache-2.0</license>
+  <author email="zeerekahmad@hotmail.com">Zeerek Ahmad</author>
+
+  <test_depend>ament_cmake_test</test_depend>
+  <test_depend>catch2</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
