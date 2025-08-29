@@ -131,7 +131,6 @@ colcon test --packages-select socketcan_adapter
 
 Note: Hardware tests require `CAN_AVAILABLE=1` environment variable and a functioning CAN interface.
 
-
 ### Creating Virtual CAN Interface
 
 For testing without hardware:
