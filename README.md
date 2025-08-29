@@ -70,12 +70,6 @@ adapter.openSocket();
 colcon test --packages-select socketcan_adapter
 ```
 
-### ROS2 Package Tests
-
-```bash
-colcon test --packages-select socketcan_adapter_ros
-```
-
 ### Hardware Tests
 Set `CAN_AVAILABLE=1` to enable hardware-dependent tests:
 
@@ -93,29 +87,6 @@ sudo ip link add dev vcan0 type vcan
 sudo ip link set up vcan0
 ```
 
-## Contributing
-
-We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.md) for details on:
-- Code style and standards
-- Testing requirements
-- Pull request process
-- Issue reporting
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes.
-
-## Support
-
-- 📖 **Documentation**: See individual package READMEs for detailed usage
-- 🐛 **Bug Reports**: Please use GitHub Issues with detailed reproduction steps
-- 💡 **Feature Requests**: Open a GitHub Issue with your use case
-- 📧 **Contact**: engineering@polymathrobotics.com
-
-## Security
-
-If you discover a security vulnerability, please send an email to security@polymathrobotics.com. All security vulnerabilities will be promptly addressed.
-
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full license text.
@@ -124,9 +95,3 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the f
 
 - **Zeerek Ahmad** - Original author - zeerekahmad@hotmail.com
 - **Polymath Robotics Engineering Team** - Maintainers - engineering@polymathrobotics.com
-
-## Acknowledgments
-
-- Linux SocketCAN developers for the underlying CAN bus support
-- ROS2 community for the robotics middleware framework
-- Contributors and users who help improve this project
