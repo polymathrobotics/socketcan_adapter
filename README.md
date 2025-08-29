@@ -6,7 +6,7 @@ A modular SocketCAN driver library and ROS2 integration for Linux-based systems.
 
 This package is split into two complementary components:
 
-### 📚 [socketcan_adapter](./socketcan_adapter/README.md)
+### [socketcan_adapter](./socketcan_adapter/README.md)
 Pure C++ SocketCAN library with no ROS dependencies.
 - Core SocketCAN functionality
 - Thread-safe operations
@@ -14,7 +14,7 @@ Pure C++ SocketCAN library with no ROS dependencies.
 - Configurable filters and error handling
 - Can be used in non-ROS projects
 
-### 🤖 [socketcan_adapter_ros](./socketcan_adapter_ros/README.md)
+### [socketcan_adapter_ros](./socketcan_adapter_ros/README.md)
 ROS2 wrapper providing nodes and launch files.
 - ROS2 lifecycle node
 - Integration with `can_msgs`
