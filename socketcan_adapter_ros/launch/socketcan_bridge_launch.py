@@ -38,13 +38,14 @@ from launch_ros.actions import LifecycleNode
 from launch_ros.event_handlers import OnStateTransition
 from launch_ros.events.lifecycle import ChangeState
 from lifecycle_msgs.msg import Transition
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
     # Define args
     can_interface_arg = DeclareLaunchArgument('can_interface', default_value='can0')
     can_error_mask_arg = DeclareLaunchArgument('can_error_mask', default_value='0x1FFFFFFF')
-    can_filter_list_arg = DeclareLaunchArgument('can_filter_list', default_value='[]')
+    can_filter_list_arg = DeclareLaunchArgument('can_filter_list', default_value="['']")
     join_filters_arg = DeclareLaunchArgument('join_filters', default_value='false')
 
     socketcan_bridge_node = LifecycleNode(
@@ -56,7 +57,7 @@ def generate_launch_description():
             {
                 'can_interface': LaunchConfiguration('can_interface'),
                 'can_error_mask': LaunchConfiguration('can_error_mask'),
-                'can_filter_list': LaunchConfiguration('can_filter_list'),
+                'can_filter_list': ParameterValue(LaunchConfiguration('can_filter_list'), value_type=list[str]),
                 'join_filters': LaunchConfiguration('join_filters'),
             }
         ],

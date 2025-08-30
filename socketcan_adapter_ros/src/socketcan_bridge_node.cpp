@@ -32,7 +32,7 @@ SocketcanBridgeNode::SocketcanBridgeNode(const rclcpp::NodeOptions & options)
 {
   declare_parameter("can_interface", std::string("can0"));
   declare_parameter("can_error_mask", static_cast<int32_t>(CAN_ERR_MASK));
-  declare_parameter("can_filter_list", {});  // vector of strings
+  declare_parameter("can_filter_list", std::vector<std::string>{});  // vector of strings
   declare_parameter("join_filters", false);
   declare_parameter("receive_timeout_s", SOCKET_RECEIVE_TIMEOUT_S.count());
 }
