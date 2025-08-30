@@ -45,6 +45,7 @@ def generate_launch_description():
     # Define args
     can_interface_arg = DeclareLaunchArgument('can_interface', default_value='can0')
     can_error_mask_arg = DeclareLaunchArgument('can_error_mask', default_value='0x1FFFFFFF')
+    # Default filter:mask [0:0] means ALL traffic is allowed
     can_filter_list_arg = DeclareLaunchArgument('can_filter_list', default_value="['0:0']")
     join_filters_arg = DeclareLaunchArgument('join_filters', default_value='false')
     receive_timeout_arg = DeclareLaunchArgument('receive_timeout_s', default_value='1.0')
