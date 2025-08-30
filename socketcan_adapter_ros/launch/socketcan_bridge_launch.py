@@ -28,36 +28,40 @@
 # Co-developed by Tier IV, Inc. and Apex.AI, Inc.
 
 
-from launch_ros.actions import LifecycleNode
-from launch_ros.event_handlers import OnStateTransition
-from launch_ros.events.lifecycle import ChangeState
-from lifecycle_msgs.msg import Transition
-
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, EmitEvent, RegisterEventHandler
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessStart
 from launch.events import matches_action
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import LifecycleNode
+from launch_ros.event_handlers import OnStateTransition
+from launch_ros.events.lifecycle import ChangeState
+from launch_ros.parameter_descriptions import ParameterValue
+from lifecycle_msgs.msg import Transition
 
 
 def generate_launch_description():
     # Define args
     can_interface_arg = DeclareLaunchArgument('can_interface', default_value='can0')
     can_error_mask_arg = DeclareLaunchArgument('can_error_mask', default_value='0x1FFFFFFF')
-    can_filter_list_arg = DeclareLaunchArgument('can_filter_list', default_value=[])
+    # Default filter:mask [0:0] means ALL traffic is allowed
+    can_filter_list_arg = DeclareLaunchArgument('can_filter_list', default_value="['0:0']")
     join_filters_arg = DeclareLaunchArgument('join_filters', default_value='false')
+    receive_timeout_arg = DeclareLaunchArgument('receive_timeout_s', default_value='1.0')
 
     socketcan_bridge_node = LifecycleNode(
-        package='socketcan_adapter',
+        package='socketcan_adapter_ros',
         executable='socketcan_bridge',
         name='socketcan_bridge',
+        namespace='',
         parameters=[
             {
                 'can_interface': LaunchConfiguration('can_interface'),
                 'can_error_mask': LaunchConfiguration('can_error_mask'),
-                'can_filter_list': LaunchConfiguration('can_filter_list'),
+                'can_filter_list': ParameterValue(LaunchConfiguration('can_filter_list'), value_type=list[str]),
                 'join_filters': LaunchConfiguration('join_filters'),
+                'receive_timeout_s': LaunchConfiguration('receive_timeout_s'),
             }
         ],
         output='screen',
@@ -100,6 +104,7 @@ def generate_launch_description():
         can_error_mask_arg,
         can_filter_list_arg,
         join_filters_arg,
+        receive_timeout_arg,
         DeclareLaunchArgument('auto_configure', default_value='true'),
         DeclareLaunchArgument('auto_activate', default_value='true'),
         socketcan_bridge_node,

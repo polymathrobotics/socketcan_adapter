@@ -36,27 +36,32 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${ASAN_FLAGS}")
 endif()
 
-# Distro detection (override with -BUILD_HUMBLE=ON/OFF)
-if(NOT DEFINED BUILD_HUMBLE)
-  if(DEFINED ENV{ROS_DISTRO} AND "$ENV{ROS_DISTRO}" STREQUAL "humble")
-    set(BUILD_HUMBLE TRUE)
-    message(STATUS "ROS_DISTRO=humble -> using Catch2 v2")
-  else()
-    set(BUILD_HUMBLE FALSE)
-    message(STATUS "ROS_DISTRO>humble -> Catch2 v3 (Jazzy/Rolling)")
+# Ubuntu detection (override with -DBUILD_JAMMY=ON/OFF)
+if(NOT DEFINED BUILD_JAMMY)
+  set(BUILD_JAMMY OFF)
+  if(EXISTS "/etc/os-release")
+    file(READ "/etc/os-release" _OS_RELEASE)
+    string(REGEX MATCH "VERSION_CODENAME=([^\n\r]+)" _match "${_OS_RELEASE}")
+    if(CMAKE_MATCH_1)
+      set(_UBUNTU_CODENAME "${CMAKE_MATCH_1}")
+      string(TOLOWER "${_UBUNTU_CODENAME}" _UBUNTU_CODENAME)
+      if(_UBUNTU_CODENAME STREQUAL "jammy")
+        set(BUILD_JAMMY ON)
+        message(STATUS "Ubuntu=jammy (22.04) -> Catch2 v2")
+      else()
+        set(BUILD_JAMMY OFF)
+        message(STATUS "Ubuntu codename='${_UBUNTU_CODENAME}' -> defaulting to Catch2 v3")
+      endif()
+    endif()
   endif()
 endif()
 
 # Dependencies
 find_package(ament_cmake REQUIRED)
-find_package(rclcpp REQUIRED)
-find_package(rclcpp_lifecycle REQUIRED)
-find_package(can_msgs REQUIRED)
 
 # Primary library
 add_library(socketcan_adapter SHARED
   src/socketcan_adapter.cpp
-  src/socketcan_bridge_node.cpp
   src/can_frame.cpp
 )
 target_include_directories(socketcan_adapter PUBLIC
@@ -64,20 +69,6 @@ target_include_directories(socketcan_adapter PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 target_compile_definitions(socketcan_adapter PRIVATE "SOCKETCAN_ADAPTER_BUILDING_LIBRARY")
-
-# Executable using the library
-add_executable(socketcan_bridge src/socketcan_bridge.cpp)
-target_include_directories(socketcan_bridge PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
-
-target_link_libraries(socketcan_adapter PUBLIC
-  ${can_msgs_TARGETS}
-  rclcpp::rclcpp
-  rclcpp_lifecycle::rclcpp_lifecycle
-)
-target_link_libraries(socketcan_bridge PUBLIC socketcan_adapter)
 
 # Installs
 install(DIRECTORY include/ DESTINATION include)
@@ -87,7 +78,6 @@ install(TARGETS socketcan_adapter
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(TARGETS socketcan_bridge DESTINATION lib/${PROJECT_NAME})
 install(EXPORT ${PROJECT_NAME}_TARGETS
   NAMESPACE ${PROJECT_NAME}::
   DESTINATION share/${PROJECT_NAME}/cmake
@@ -97,7 +87,7 @@ install(EXPORT ${PROJECT_NAME}_TARGETS
 if(BUILD_TESTING)
   include(CTest)
   # Find correct Catch2 major version per distro
-  if(BUILD_HUMBLE)
+  if(BUILD_JAMMY)
     find_package(Catch2 2 REQUIRED)
   else()
     find_package(Catch2 3 REQUIRED)

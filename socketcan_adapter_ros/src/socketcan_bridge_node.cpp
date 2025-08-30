@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "socketcan_adapter/socketcan_bridge_node.hpp"
+#include "socketcan_adapter_ros/socketcan_bridge_node.hpp"
 
 #include <cstdio>
 #include <functional>
@@ -32,7 +32,8 @@ SocketcanBridgeNode::SocketcanBridgeNode(const rclcpp::NodeOptions & options)
 {
   declare_parameter("can_interface", std::string("can0"));
   declare_parameter("can_error_mask", static_cast<int32_t>(CAN_ERR_MASK));
-  declare_parameter("can_filter_list", {});  // vector of strings
+  // Vector of strings, default 0:0 means ALL traffic allowed
+  declare_parameter("can_filter_list", std::vector<std::string>{"0:0"});
   declare_parameter("join_filters", false);
   declare_parameter("receive_timeout_s", SOCKET_RECEIVE_TIMEOUT_S.count());
 }
@@ -101,6 +102,8 @@ SocketcanBridgeNode::rclcpp_lifecycle_callback_return SocketcanBridgeNode::on_co
   socketcan_adapter_->setOnErrorCallback(
     std::bind(&SocketcanBridgeNode::socketErrorCallback, this, std::placeholders::_1));
 
+  RCLCPP_INFO(get_logger(), "Finished configuration!");
+
   return LifecycleNode::on_configure(state);
 }
 
@@ -117,6 +120,7 @@ SocketcanBridgeNode::rclcpp_lifecycle_callback_return SocketcanBridgeNode::on_ac
     return rclcpp_lifecycle_callback_return::FAILURE;
   }
 
+  RCLCPP_INFO(get_logger(), "Finished activation!");
   return LifecycleNode::on_activate(state);
 }
 
