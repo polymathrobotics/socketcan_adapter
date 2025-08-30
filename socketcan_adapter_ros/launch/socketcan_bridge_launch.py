@@ -47,7 +47,7 @@ def generate_launch_description():
     can_error_mask_arg = DeclareLaunchArgument('can_error_mask', default_value='0x1FFFFFFF')
     can_filter_list_arg = DeclareLaunchArgument('can_filter_list', default_value="['']")
     join_filters_arg = DeclareLaunchArgument('join_filters', default_value='false')
-    receive_timeout_arg = DeclareLaunchArgument('receive_timeout_s', default_value=1)
+    receive_timeout_arg = DeclareLaunchArgument('receive_timeout_s', default_value='1.0')
 
     socketcan_bridge_node = LifecycleNode(
         package='socketcan_adapter_ros',
