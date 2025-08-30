@@ -81,6 +81,7 @@ target_link_libraries(socketcan_bridge PUBLIC socketcan_adapter_ros)
 
 # Installs
 install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY launch/ DESTINATION share/${PROJECT_NAME}/launch)
 install(TARGETS socketcan_adapter_ros
   EXPORT ${PROJECT_NAME}_TARGETS
   ARCHIVE DESTINATION lib

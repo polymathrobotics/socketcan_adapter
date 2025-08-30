@@ -48,9 +48,10 @@ def generate_launch_description():
     join_filters_arg = DeclareLaunchArgument('join_filters', default_value='false')
 
     socketcan_bridge_node = LifecycleNode(
-        package='socketcan_adapter',
+        package='socketcan_adapter_ros',
         executable='socketcan_bridge',
         name='socketcan_bridge',
+        namespace='',
         parameters=[
             {
                 'can_interface': LaunchConfiguration('can_interface'),
