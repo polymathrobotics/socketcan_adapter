@@ -126,10 +126,11 @@ std::optional<SocketcanAdapter::socket_error_string_t> SocketcanAdapter::receive
   fds[0].fd = socket_file_descriptor_;
   fds[0].events = POLLIN | POLLERR;
 
+  auto poll_timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(receive_timeout_s_).count();
+
   /// TODO: We don't need to call duration cast every time we run this, we should store milliseconds instead
   /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/8
-  int return_value = poll(
-    fds, NUM_SOCKETS_IN_ADAPTER, std::chrono::duration_cast<std::chrono::milliseconds>(receive_timeout_s_).count());
+  int return_value = poll(fds, NUM_SOCKETS_IN_ADAPTER, poll_timeout_ms);
 
   socket_error_string_t error_string;
 
@@ -139,7 +140,9 @@ std::optional<SocketcanAdapter::socket_error_string_t> SocketcanAdapter::receive
   }
 
   if (return_value == 0) {
-    return std::optional<socket_error_string_t>("poll timed out with no data");
+    socket_error_string_t err_string =
+      socket_error_string_t("poll timed out with no data with timeout") + std::to_string(poll_timeout_ms);
+    return std::optional<socket_error_string_t>(err_string);
   }
 
   if (fds[0].revents & POLLERR) {

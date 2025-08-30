@@ -101,6 +101,8 @@ SocketcanBridgeNode::rclcpp_lifecycle_callback_return SocketcanBridgeNode::on_co
   socketcan_adapter_->setOnErrorCallback(
     std::bind(&SocketcanBridgeNode::socketErrorCallback, this, std::placeholders::_1));
 
+  RCLCPP_INFO(get_logger(), "Finished configuration!");
+
   return LifecycleNode::on_configure(state);
 }
 
@@ -117,6 +119,7 @@ SocketcanBridgeNode::rclcpp_lifecycle_callback_return SocketcanBridgeNode::on_ac
     return rclcpp_lifecycle_callback_return::FAILURE;
   }
 
+  RCLCPP_INFO(get_logger(), "Finished activation!");
   return LifecycleNode::on_activate(state);
 }
 
