@@ -47,6 +47,7 @@ def generate_launch_description():
     can_error_mask_arg = DeclareLaunchArgument('can_error_mask', default_value='0x1FFFFFFF')
     can_filter_list_arg = DeclareLaunchArgument('can_filter_list', default_value="['']")
     join_filters_arg = DeclareLaunchArgument('join_filters', default_value='false')
+    receive_timeout_arg = DeclareLaunchArgument('receive_timeout_s', default_value=1)
 
     socketcan_bridge_node = LifecycleNode(
         package='socketcan_adapter_ros',
@@ -59,6 +60,7 @@ def generate_launch_description():
                 'can_error_mask': LaunchConfiguration('can_error_mask'),
                 'can_filter_list': ParameterValue(LaunchConfiguration('can_filter_list'), value_type=list[str]),
                 'join_filters': LaunchConfiguration('join_filters'),
+                'receive_timeout_s': LaunchConfiguration('receive_timeout_s'),
             }
         ],
         output='screen',
@@ -101,6 +103,7 @@ def generate_launch_description():
         can_error_mask_arg,
         can_filter_list_arg,
         join_filters_arg,
+        receive_timeout_arg,
         DeclareLaunchArgument('auto_configure', default_value='true'),
         DeclareLaunchArgument('auto_activate', default_value='true'),
         socketcan_bridge_node,
