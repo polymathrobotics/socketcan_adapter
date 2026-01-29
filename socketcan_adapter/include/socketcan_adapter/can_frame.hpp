@@ -18,6 +18,7 @@
 #include <linux/can.h>
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -62,7 +63,7 @@ public:
   CanFrame(
     const canid_t raw_id,
     const std::array<unsigned char, CAN_MAX_DLC> & data,
-    const uint64_t & timestamp,
+    const uint64_t & bus_timestamp,
     uint8_t len = CAN_MAX_DLC);
 
   /// @brief Initialize CanFrame with a partial ID and data defined in std::array
@@ -74,7 +75,7 @@ public:
   CanFrame(
     const canid_t id,
     const std::array<unsigned char, CAN_MAX_DLC> & data,
-    const uint64_t & timestamp,
+    const uint64_t & bus_timestamp,
     FrameType & frame_type,
     IdType & frame_id_type,
     uint8_t len = CAN_MAX_DLC);
@@ -113,9 +114,29 @@ public:
   /// @param data INPUT raw data to pass through the socket
   void set_data(const std::array<unsigned char, CAN_MAX_DLC> & data);
 
-  /// @brief Set timestamp
+  /// @brief Set bus timestamp
   /// @param timestamp INPUT time as uint64_t from the bus
-  void set_timestamp(const uint64_t & timestamp);
+  void set_bus_timestamp(const uint64_t & timestamp);
+
+  /// @brief Set receive timestamp
+  /// @param timestamp INPUT time as uint64_t from the bus
+  void set_receive_timestamp(const uint64_t & timestamp);
+
+  /// @brief Set timestamp
+  /// @param timestamp INPUT time as std::chrono::system_clock::time_point from the bus
+  void set_bus_timestamp(const std::chrono::system_clock::time_point & timestamp);
+
+  /// @brief Set timestamp
+  /// @param timestamp INPUT time as std::chrono::steady_clock::time_point from the adapter
+  void set_receive_timestamp(const std::chrono::steady_clock::time_point & timestamp);
+
+  /// @brief Get bus time
+  /// @return returns std::chrono::system_clock::time_point for when the frame was received on the bus
+  std::chrono::system_clock::time_point get_bus_time() const;
+
+  /// @brief Get receive time
+  /// @return returns std::chrono::steady_clock::time_point for when the frame was received by the adapter
+  std::chrono::steady_clock::time_point get_receive_time() const;
 
   /// @brief Get frame type
   /// @return returns polymath::socketcan::FrameType
@@ -156,7 +177,8 @@ public:
 
 private:
   struct can_frame frame_{};
-  uint64_t timestamp_{};
+  std::chrono::steady_clock::time_point receive_time_{};
+  std::chrono::system_clock::time_point bus_time_{};
 };
 
 }  // namespace polymath::socketcan

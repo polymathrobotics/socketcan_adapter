@@ -16,8 +16,11 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <string>
+#include <thread>
+#include <vector>
 
 #if __has_include(<catch2/catch_all.hpp>)
   #include <catch2/catch_all.hpp>  // v3
@@ -167,4 +170,94 @@ TEST_CASE("Get error as string", "[CanFrame]")
 
   std::string error = frame.get_error();
   REQUIRE(!error.empty());
+}
+
+TEST_CASE("SocketcanAdapter receive sets timestamps", "[SocketcanAdapter]")
+{
+  // Create two adapters - one to send, one to receive
+  polymath::socketcan::SocketcanAdapter sender("vcan0");
+  polymath::socketcan::SocketcanAdapter receiver("vcan0");
+
+  REQUIRE(sender.openSocket());
+  REQUIRE(receiver.openSocket());
+
+  // Create a frame to send
+  polymath::socketcan::CanFrame tx_frame;
+  tx_frame.set_can_id(0x123);
+  std::array<unsigned char, CAN_MAX_DLC> data = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00, 0x00, 0x00};
+  tx_frame.set_data(data);
+  tx_frame.set_len(4);
+
+  // Record time before send
+  auto before_send = std::chrono::steady_clock::now();
+
+  // Send the frame
+  auto send_result = sender.send(tx_frame);
+  REQUIRE_FALSE(send_result.has_value());
+
+  // Small delay to ensure frame is available
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+  // Receive the frame
+  polymath::socketcan::CanFrame rx_frame;
+  auto receive_result = receiver.receive(rx_frame);
+
+  auto after_receive = std::chrono::steady_clock::now();
+
+  REQUIRE_FALSE(receive_result.has_value());
+
+  // Verify frame data matches
+  REQUIRE(rx_frame.get_id() == 0x123);
+
+  // Verify receive_time is set and within expected bounds
+  auto receive_time = rx_frame.get_receive_time();
+  REQUIRE(receive_time >= before_send);
+  REQUIRE(receive_time <= after_receive);
+
+  // Verify bus_time is set (non-default)
+  auto bus_time = rx_frame.get_bus_time();
+  auto epoch = std::chrono::system_clock::time_point{};
+  REQUIRE(bus_time != epoch);
+
+  sender.closeSocket();
+  receiver.closeSocket();
+}
+
+TEST_CASE("SocketcanAdapter receive timestamps are monotonic", "[SocketcanAdapter]")
+{
+  polymath::socketcan::SocketcanAdapter sender("vcan0");
+  polymath::socketcan::SocketcanAdapter receiver("vcan0");
+
+  REQUIRE(sender.openSocket());
+  REQUIRE(receiver.openSocket());
+
+  // Send multiple frames and verify timestamps are monotonically increasing
+  std::vector<std::chrono::steady_clock::time_point> receive_times;
+
+  for (int i = 0; i < 3; ++i) {
+    polymath::socketcan::CanFrame tx_frame;
+    tx_frame.set_can_id(0x200 + i);
+    std::array<unsigned char, CAN_MAX_DLC> data = {static_cast<unsigned char>(i), 0, 0, 0, 0, 0, 0, 0};
+    tx_frame.set_data(data);
+    tx_frame.set_len(1);
+
+    auto send_result = sender.send(tx_frame);
+    REQUIRE_FALSE(send_result.has_value());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+    polymath::socketcan::CanFrame rx_frame;
+    auto receive_result = receiver.receive(rx_frame);
+    REQUIRE_FALSE(receive_result.has_value());
+
+    receive_times.push_back(rx_frame.get_receive_time());
+  }
+
+  // Verify receive times are monotonically increasing
+  for (size_t i = 1; i < receive_times.size(); ++i) {
+    REQUIRE(receive_times[i] > receive_times[i - 1]);
+  }
+
+  sender.closeSocket();
+  receiver.closeSocket();
 }
