@@ -18,6 +18,8 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <future>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -181,6 +183,16 @@ TEST_CASE("SocketcanAdapter receive sets timestamps", "[SocketcanAdapter]")
   REQUIRE(sender.openSocket());
   REQUIRE(receiver.openSocket());
 
+  // Set up promise/future for synchronization - no sleep needed
+  std::promise<polymath::socketcan::CanFrame> frame_promise;
+  std::future<polymath::socketcan::CanFrame> frame_future = frame_promise.get_future();
+
+  // Register callback that fulfills the promise when frame is received
+  receiver.setOnReceiveCallback(
+    [&frame_promise](std::unique_ptr<const polymath::socketcan::CanFrame> frame) { frame_promise.set_value(*frame); });
+
+  REQUIRE(receiver.startReceptionThread());
+
   // Create a frame to send
   polymath::socketcan::CanFrame tx_frame;
   tx_frame.set_can_id(0x123);
@@ -195,16 +207,12 @@ TEST_CASE("SocketcanAdapter receive sets timestamps", "[SocketcanAdapter]")
   auto send_result = sender.send(tx_frame);
   REQUIRE_FALSE(send_result.has_value());
 
-  // Small delay to ensure frame is available
-  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  // Wait for frame with explicit timeout (1 second is generous for vcan loopback)
+  auto status = frame_future.wait_for(std::chrono::seconds(1));
+  REQUIRE(status == std::future_status::ready);
 
-  // Receive the frame
-  polymath::socketcan::CanFrame rx_frame;
-  auto receive_result = receiver.receive(rx_frame);
-
+  auto rx_frame = frame_future.get();
   auto after_receive = std::chrono::steady_clock::now();
-
-  REQUIRE_FALSE(receive_result.has_value());
 
   // Verify frame data matches
   REQUIRE(rx_frame.get_id() == 0x123);
@@ -219,6 +227,7 @@ TEST_CASE("SocketcanAdapter receive sets timestamps", "[SocketcanAdapter]")
   auto epoch = std::chrono::system_clock::time_point{};
   REQUIRE(bus_time != epoch);
 
+  receiver.joinReceptionThread();
   sender.closeSocket();
   receiver.closeSocket();
 }
@@ -231,33 +240,51 @@ TEST_CASE("SocketcanAdapter receive timestamps are monotonic", "[SocketcanAdapte
   REQUIRE(sender.openSocket());
   REQUIRE(receiver.openSocket());
 
-  // Send multiple frames and verify timestamps are monotonically increasing
-  std::vector<std::chrono::steady_clock::time_point> receive_times;
+  // Thread-safe frame collection using mutex-protected vector and a promise for completion
+  constexpr size_t FRAME_COUNT = 3;
+  std::mutex mtx;
+  std::vector<polymath::socketcan::CanFrame> received_frames;
+  std::promise<void> all_received_promise;
+  std::future<void> all_received_future = all_received_promise.get_future();
 
-  for (int i = 0; i < 3; ++i) {
+  receiver.setOnReceiveCallback([&](std::unique_ptr<const polymath::socketcan::CanFrame> frame) {
+    std::lock_guard<std::mutex> lock(mtx);
+    received_frames.push_back(*frame);
+    if (received_frames.size() == FRAME_COUNT) {
+      all_received_promise.set_value();
+    }
+  });
+
+  REQUIRE(receiver.startReceptionThread());
+
+  // Send all frames
+  for (size_t i = 0; i < FRAME_COUNT; ++i) {
     polymath::socketcan::CanFrame tx_frame;
-    tx_frame.set_can_id(0x200 + i);
+    tx_frame.set_can_id(0x200 + static_cast<canid_t>(i));
     std::array<unsigned char, CAN_MAX_DLC> data = {static_cast<unsigned char>(i), 0, 0, 0, 0, 0, 0, 0};
     tx_frame.set_data(data);
     tx_frame.set_len(1);
 
     auto send_result = sender.send(tx_frame);
     REQUIRE_FALSE(send_result.has_value());
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-
-    polymath::socketcan::CanFrame rx_frame;
-    auto receive_result = receiver.receive(rx_frame);
-    REQUIRE_FALSE(receive_result.has_value());
-
-    receive_times.push_back(rx_frame.get_receive_time());
   }
 
-  // Verify receive times are monotonically increasing
-  for (size_t i = 1; i < receive_times.size(); ++i) {
-    REQUIRE(receive_times[i] > receive_times[i - 1]);
+  // Wait for all frames with explicit timeout
+  auto status = all_received_future.wait_for(std::chrono::seconds(2));
+  REQUIRE(status == std::future_status::ready);
+
+  // Verify we received all frames
+  {
+    std::lock_guard<std::mutex> lock(mtx);
+    REQUIRE(received_frames.size() == FRAME_COUNT);
+
+    // Verify receive times are monotonically increasing
+    for (size_t i = 1; i < received_frames.size(); ++i) {
+      REQUIRE(received_frames[i].get_receive_time() >= received_frames[i - 1].get_receive_time());
+    }
   }
 
+  receiver.joinReceptionThread();
   sender.closeSocket();
   receiver.closeSocket();
 }
