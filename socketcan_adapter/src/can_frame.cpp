@@ -32,8 +32,12 @@ CanFrame::CanFrame(const struct can_frame & frame)
 {}
 
 CanFrame::CanFrame(
-  const canid_t raw_id, const std::array<unsigned char, CAN_MAX_DLC> & data, const uint64_t & timestamp, uint8_t len)
-: timestamp_(timestamp)
+  const canid_t raw_id,
+  const std::array<unsigned char, CAN_MAX_DLC> & data,
+  const uint64_t & bus_timestamp,
+  uint8_t len)
+: receive_time_(std::chrono::steady_clock::now())
+, bus_time_(std::chrono::system_clock::time_point(std::chrono::microseconds(bus_timestamp)))
 {
   set_can_id(raw_id);
   std::copy(data.begin(), data.end(), frame_.data);
@@ -43,11 +47,12 @@ CanFrame::CanFrame(
 CanFrame::CanFrame(
   const canid_t id,
   const std::array<unsigned char, CAN_MAX_DLC> & data,
-  const uint64_t & timestamp,
+  const uint64_t & bus_timestamp,
   FrameType & frame_type,
   IdType & frame_id_type,
   uint8_t len)
-: timestamp_(timestamp)
+: receive_time_(std::chrono::steady_clock::now())
+, bus_time_(std::chrono::system_clock::time_point(std::chrono::microseconds(bus_timestamp)))
 {
   set_can_id(id);
   set_data(data);
@@ -130,9 +135,34 @@ void CanFrame::set_data(const std::array<unsigned char, CAN_MAX_DLC> & data)
   std::copy(data.begin(), data.end(), frame_.data);
 }
 
-void CanFrame::set_timestamp(const uint64_t & timestamp)
+void CanFrame::set_bus_timestamp(const uint64_t & timestamp)
 {
-  timestamp_ = timestamp;
+  bus_time_ = std::chrono::system_clock::time_point(std::chrono::microseconds(timestamp));
+}
+
+void CanFrame::set_receive_timestamp(const uint64_t & timestamp)
+{
+  receive_time_ = std::chrono::steady_clock::time_point(std::chrono::microseconds(timestamp));
+}
+
+void CanFrame::set_bus_timestamp(const std::chrono::system_clock::time_point & timestamp)
+{
+  bus_time_ = timestamp;
+}
+
+void CanFrame::set_receive_timestamp(const std::chrono::steady_clock::time_point & timestamp)
+{
+  receive_time_ = timestamp;
+}
+
+std::chrono::system_clock::time_point CanFrame::get_bus_time() const
+{
+  return bus_time_;
+}
+
+std::chrono::steady_clock::time_point CanFrame::get_receive_time() const
+{
+  return receive_time_;
 }
 
 IdType CanFrame::get_id_type() const

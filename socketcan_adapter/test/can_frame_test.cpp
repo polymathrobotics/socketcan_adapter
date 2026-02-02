@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <string>
 
@@ -167,4 +168,104 @@ TEST_CASE("Get error as string", "[CanFrame]")
 
   std::string error = frame.get_error();
   REQUIRE(!error.empty());
+}
+
+TEST_CASE("Set and get bus timestamp with uint64_t", "[CanFrame]")
+{
+  polymath::socketcan::CanFrame frame;
+  std::uint64_t timestamp_us = 1000000;  // 1 second in microseconds
+
+  frame.set_bus_timestamp(timestamp_us);
+  auto bus_time = frame.get_bus_time();
+
+  auto expected = std::chrono::system_clock::time_point(std::chrono::microseconds(timestamp_us));
+  REQUIRE(bus_time == expected);
+}
+
+TEST_CASE("Set and get receive timestamp with uint64_t", "[CanFrame]")
+{
+  polymath::socketcan::CanFrame frame;
+  std::uint64_t timestamp_us = 2000000;  // 2 seconds in microseconds
+
+  frame.set_receive_timestamp(timestamp_us);
+  auto receive_time = frame.get_receive_time();
+
+  auto expected = std::chrono::steady_clock::time_point(std::chrono::microseconds(timestamp_us));
+  REQUIRE(receive_time == expected);
+}
+
+TEST_CASE("Set and get bus timestamp with time_point", "[CanFrame]")
+{
+  polymath::socketcan::CanFrame frame;
+  auto timestamp = std::chrono::system_clock::now();
+
+  frame.set_bus_timestamp(timestamp);
+  auto bus_time = frame.get_bus_time();
+
+  REQUIRE(bus_time == timestamp);
+}
+
+TEST_CASE("Set and get receive timestamp with time_point", "[CanFrame]")
+{
+  polymath::socketcan::CanFrame frame;
+  auto timestamp = std::chrono::steady_clock::now();
+
+  frame.set_receive_timestamp(timestamp);
+  auto receive_time = frame.get_receive_time();
+
+  REQUIRE(receive_time == timestamp);
+}
+
+TEST_CASE("Constructor initializes receive_time to now", "[CanFrame]")
+{
+  auto before = std::chrono::steady_clock::now();
+
+  canid_t raw_id = 0x123;
+  std::array<unsigned char, CAN_MAX_DLC> data = {1, 2, 3, 4, 5, 6, 7, 8};
+  std::uint64_t bus_timestamp = 123456789;
+  polymath::socketcan::CanFrame frame(raw_id, data, bus_timestamp);
+
+  auto after = std::chrono::steady_clock::now();
+  auto receive_time = frame.get_receive_time();
+
+  REQUIRE(receive_time >= before);
+  REQUIRE(receive_time <= after);
+}
+
+TEST_CASE("Constructor sets bus_time from timestamp parameter", "[CanFrame]")
+{
+  canid_t raw_id = 0x123;
+  std::array<unsigned char, CAN_MAX_DLC> data = {1, 2, 3, 4, 5, 6, 7, 8};
+  std::uint64_t bus_timestamp = 5000000;  // 5 seconds in microseconds
+
+  polymath::socketcan::CanFrame frame(raw_id, data, bus_timestamp);
+  auto bus_time = frame.get_bus_time();
+
+  auto expected = std::chrono::system_clock::time_point(std::chrono::microseconds(bus_timestamp));
+  REQUIRE(bus_time == expected);
+}
+
+TEST_CASE("Extended constructor initializes timestamps correctly", "[CanFrame]")
+{
+  auto before = std::chrono::steady_clock::now();
+
+  canid_t raw_id = 0x789;
+  std::array<unsigned char, CAN_MAX_DLC> data = {9, 8, 7, 6, 5, 4, 3, 2};
+  std::uint64_t bus_timestamp = 10000000;  // 10 seconds in microseconds
+  auto frame_type = polymath::socketcan::FrameType::REMOTE;
+  auto frame_id_type = polymath::socketcan::IdType::EXTENDED;
+
+  polymath::socketcan::CanFrame frame(raw_id, data, bus_timestamp, frame_type, frame_id_type);
+
+  auto after = std::chrono::steady_clock::now();
+
+  // Check receive_time was set to approximately now
+  auto receive_time = frame.get_receive_time();
+  REQUIRE(receive_time >= before);
+  REQUIRE(receive_time <= after);
+
+  // Check bus_time was set from the parameter
+  auto bus_time = frame.get_bus_time();
+  auto expected_bus_time = std::chrono::system_clock::time_point(std::chrono::microseconds(bus_timestamp));
+  REQUIRE(bus_time == expected_bus_time);
 }

@@ -24,6 +24,7 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <future>
 #include <memory>
@@ -172,9 +173,12 @@ std::optional<SocketcanAdapter::socket_error_string_t> SocketcanAdapter::receive
     struct timeval tv;
     ioctl(socket_file_descriptor_, SIOCGSTAMP, &tv);
 
-    uint64_t timestamp_uint64 = static_cast<uint64_t>(tv.tv_sec) * 1e6 + tv.tv_usec;
+    // uint64_t timestamp_uint64 = static_cast<uint64_t>(tv.tv_sec) * 1e6 + tv.tv_usec;
+    std::chrono::system_clock::time_point timestamp{
+      std::chrono::seconds{tv.tv_sec} + std::chrono::microseconds{tv.tv_usec}};
     polymath_can_frame.set_frame(frame);
-    polymath_can_frame.set_timestamp(timestamp_uint64);
+    polymath_can_frame.set_bus_timestamp(timestamp);
+    polymath_can_frame.set_receive_timestamp(std::chrono::steady_clock::now());
   }
 
   return error_string.empty() ? std::nullopt : std::optional<socket_error_string_t>(error_string);
