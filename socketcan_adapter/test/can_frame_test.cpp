@@ -269,3 +269,59 @@ TEST_CASE("Extended constructor initializes timestamps correctly", "[CanFrame]")
   auto expected_bus_time = std::chrono::system_clock::time_point(std::chrono::microseconds(bus_timestamp));
   REQUIRE(bus_time == expected_bus_time);
 }
+
+TEST_CASE("j1939PgnToFilter PDU2 matches full PGN", "[J1939]")
+{
+  // PGN 0xFEF1 (Engine Coolant Temperature) — PF=0xFE >= 0xF0, so PDU2
+  const auto filter = polymath::socketcan::j1939PgnToFilter(0xFEF1);
+
+  // can_id should be PGN shifted left 8 bits with EFF flag
+  REQUIRE(filter.can_id == ((0xFEF1U << 8) | CAN_EFF_FLAG));
+  // PDU2: full 18-bit PGN mask + EFF flag
+  REQUIRE(filter.can_mask == (polymath::socketcan::J1939_PGN_FULL_MASK | CAN_EFF_FLAG));
+}
+
+TEST_CASE("j1939PgnToFilter PDU1 masks out destination address", "[J1939]")
+{
+  // PGN 0xEA00 (Request PGN) — PF=0xEA < 0xF0, so PDU1
+  const auto filter = polymath::socketcan::j1939PgnToFilter(0xEA00);
+
+  REQUIRE(filter.can_id == ((0xEA00U << 8) | CAN_EFF_FLAG));
+  // PDU1: only upper 10 bits of PGN (EDP+DP+PF), PS bits unmasked
+  REQUIRE(filter.can_mask == (polymath::socketcan::J1939_PGN_PDU1_MASK | CAN_EFF_FLAG));
+}
+
+TEST_CASE("j1939PgnToFilter PDU1 boundary at 0xEF", "[J1939]")
+{
+  // PF=0xEF is the last PDU1 value (< 0xF0)
+  const auto filter = polymath::socketcan::j1939PgnToFilter(0xEF00);
+  REQUIRE(filter.can_mask == (polymath::socketcan::J1939_PGN_PDU1_MASK | CAN_EFF_FLAG));
+}
+
+TEST_CASE("j1939PgnToFilter PDU2 boundary at 0xF0", "[J1939]")
+{
+  // PF=0xF0 is the first PDU2 value (>= 0xF0)
+  const auto filter = polymath::socketcan::j1939PgnToFilter(0xF000);
+  REQUIRE(filter.can_mask == (polymath::socketcan::J1939_PGN_FULL_MASK | CAN_EFF_FLAG));
+}
+
+TEST_CASE("j1939PgnsToFilters converts multiple PGNs", "[J1939]")
+{
+  const std::vector<uint32_t> pgns = {0xFEF1, 0xEA00, 0xF004};
+  const auto filters = polymath::socketcan::j1939PgnsToFilters(pgns);
+
+  REQUIRE(filters.size() == 3);
+  // First is PDU2
+  REQUIRE(filters[0].can_mask == (polymath::socketcan::J1939_PGN_FULL_MASK | CAN_EFF_FLAG));
+  // Second is PDU1
+  REQUIRE(filters[1].can_mask == (polymath::socketcan::J1939_PGN_PDU1_MASK | CAN_EFF_FLAG));
+  // Third is PDU2
+  REQUIRE(filters[2].can_mask == (polymath::socketcan::J1939_PGN_FULL_MASK | CAN_EFF_FLAG));
+}
+
+TEST_CASE("j1939PgnsToFilters empty input returns empty", "[J1939]")
+{
+  const std::vector<uint32_t> pgns = {};
+  const auto filters = polymath::socketcan::j1939PgnsToFilters(pgns);
+  REQUIRE(filters.empty());
+}

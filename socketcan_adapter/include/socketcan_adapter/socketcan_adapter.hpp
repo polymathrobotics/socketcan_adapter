@@ -53,6 +53,38 @@ constexpr std::chrono::duration<float> JOIN_RECEPTION_TIMEOUT_S = std::chrono::d
 constexpr int32_t CLOSED_SOCKET_VALUE = -1;
 constexpr nfds_t NUM_SOCKETS_IN_ADAPTER = 1;
 
+/// @brief J1939 CAN ID bit layout constants
+constexpr uint32_t J1939_PGN_SHIFT = 8;
+constexpr uint32_t J1939_PF_SHIFT = 16;
+constexpr uint32_t J1939_PF_MASK = 0xFF;
+constexpr uint32_t J1939_PDU2_THRESHOLD = 0xF0;
+/// @brief Masks priority (3 bits) and source address (8 bits), matches full PGN (18 bits)
+constexpr uint32_t J1939_PGN_FULL_MASK = 0x03FFFF00;
+/// @brief Masks priority, source address, and PDU Specific (destination addr in PDU1)
+constexpr uint32_t J1939_PGN_PDU1_MASK = 0x03FF0000;
+
+/// @brief Convert a J1939 PGN to a CAN filter suitable for use with setFilters()
+/// Handles PDU1 (PF < 0xF0) vs PDU2 (PF >= 0xF0) masking automatically:
+/// - PDU2: PS is Group Extension, part of the PGN — all 18 PGN bits are matched
+/// - PDU1: PS is destination address, not part of the PGN — only 10 bits are matched
+/// @param pgn The PGN value (18-bit, e.g. 0xFEF1)
+/// @return can_filter with appropriate can_id and can_mask set
+static inline struct can_filter j1939PgnToFilter(const uint32_t pgn)
+{
+  const uint8_t pf = static_cast<uint8_t>((pgn >> J1939_PGN_SHIFT) & J1939_PF_MASK);
+
+  struct can_filter filter {};
+  filter.can_id = (pgn << J1939_PGN_SHIFT) | CAN_EFF_FLAG;
+
+  if (J1939_PDU2_THRESHOLD <= pf) {
+    filter.can_mask = J1939_PGN_FULL_MASK | CAN_EFF_FLAG;
+  } else {
+    filter.can_mask = J1939_PGN_PDU1_MASK | CAN_EFF_FLAG;
+  }
+
+  return filter;
+}
+
 /// @class polymath::socketcan::SocketcanAdapter
 /// @brief Creates and manages a socketcan instance and simplifies the interface.
 /// Generally does not throw, but returns booleans to tell you success
