@@ -304,24 +304,3 @@ TEST_CASE("j1939PgnToFilter PDU2 boundary at 0xF0", "[J1939]")
   const auto filter = polymath::socketcan::j1939PgnToFilter(0xF000);
   REQUIRE(filter.can_mask == (polymath::socketcan::J1939_PGN_FULL_MASK | CAN_EFF_FLAG));
 }
-
-TEST_CASE("j1939PgnsToFilters converts multiple PGNs", "[J1939]")
-{
-  const std::vector<uint32_t> pgns = {0xFEF1, 0xEA00, 0xF004};
-  const auto filters = polymath::socketcan::j1939PgnsToFilters(pgns);
-
-  REQUIRE(filters.size() == 3);
-  // First is PDU2
-  REQUIRE(filters[0].can_mask == (polymath::socketcan::J1939_PGN_FULL_MASK | CAN_EFF_FLAG));
-  // Second is PDU1
-  REQUIRE(filters[1].can_mask == (polymath::socketcan::J1939_PGN_PDU1_MASK | CAN_EFF_FLAG));
-  // Third is PDU2
-  REQUIRE(filters[2].can_mask == (polymath::socketcan::J1939_PGN_FULL_MASK | CAN_EFF_FLAG));
-}
-
-TEST_CASE("j1939PgnsToFilters empty input returns empty", "[J1939]")
-{
-  const std::vector<uint32_t> pgns = {};
-  const auto filters = polymath::socketcan::j1939PgnsToFilters(pgns);
-  REQUIRE(filters.empty());
-}

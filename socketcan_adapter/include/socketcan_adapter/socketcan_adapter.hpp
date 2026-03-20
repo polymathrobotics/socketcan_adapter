@@ -73,7 +73,7 @@ static inline struct can_filter j1939PgnToFilter(const uint32_t pgn)
 {
   const uint8_t pf = static_cast<uint8_t>((pgn >> J1939_PGN_SHIFT) & J1939_PF_MASK);
 
-  struct can_filter filter {};
+  struct can_filter filter{};
   filter.can_id = (pgn << J1939_PGN_SHIFT) | CAN_EFF_FLAG;
 
   if (J1939_PDU2_THRESHOLD <= pf) {
