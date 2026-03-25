@@ -2,8 +2,8 @@
 Changelog for package socketcan_adapter_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.2.0 (2026-03-25)
+------------------
 * Split socketcan adapter and socketcan adapter ros (`#3 <https://github.com/polymathrobotics/socketcan_adapter/issues/3>`_)
   * Split socketcan adapter and socketcan adapter ros
   * Update readmes via guided AI (prior to cleanup) and pre-commit

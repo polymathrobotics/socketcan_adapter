@@ -2,8 +2,8 @@
 Changelog for package socketcan_adapter
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.2.0 (2026-03-25)
+------------------
 * Add in timestamping for usability (`#4 <https://github.com/polymathrobotics/socketcan_adapter/issues/4>`_)
   * Add in timestamping for usability
   * Switch to promise future instead of sleeps
