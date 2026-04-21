@@ -21,6 +21,12 @@ ROS2 wrapper providing nodes and launch files.
 - Launch files with parameter support
 - Depends on the core `socketcan_adapter` library
 
+### [axiomatic_adapter](./axiomatic_adapter/README.md)
+C++ library to connect CAN data to Axiomatic CAN-ETH adapter
+- Core Axiomatic ETH-CAN bridge functionality
+- Modeled after the socketcan_adapter
+- Has an additional bridge to leverage the `socketcan_adapter` library to put eth traffic on socketcan
+
 ## Quick Start
 
 ### Build Both Packages

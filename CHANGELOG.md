@@ -10,3 +10,10 @@ __INITIAL RELEASE__
   - Ability to send and receive CanFrame types
   - Built in Threading to receive data
 - SocketcanBridgeNode to run a ros2 passthrough node
+
+## v0.2.1
+
+### Features
+- Now with `axiomatic_adapter` package!
+- Introduces an additional interface between Axiomatic's CAN-ETH converter and CAN messages
+- Has a wrapper to put ETH CAN traffic onto a socketcan interface using `SocketcanAdapter`
