@@ -21,6 +21,7 @@
 #include <atomic>
 #include <future>
 #include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
@@ -29,8 +30,6 @@
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <boost/system/error_code.hpp>
-
-#include "polymath_cpputils/mutex_protected.hpp"
 
 namespace polymath
 {
@@ -70,15 +69,15 @@ public:
       boost::asio::steady_timer timer(tcp_io_context_);
       timer.expires_after(TCP_IP_CONNECTION_TIMEOUT_MS);
 
-      polymath::core::utils::MutexProtected<TCPSocketConnectionState> connection_state{
-        {false, boost::asio::error::would_block}};
+      TCPSocketConnectionState connection_state{false, boost::asio::error::would_block};
+      std::mutex connection_state_mutex;
 
       // Asynchronously attempt to connect
       boost::asio::async_connect(
         tcp_socket_, endpoints, [&](const boost::system::error_code & error, const boost::asio::ip::tcp::endpoint &) {
-          auto guard = connection_state.lock();
-          guard->error_code = error;
-          guard->connected = !error;
+          std::lock_guard<std::mutex> guard(connection_state_mutex);
+          connection_state.error_code = error;
+          connection_state.connected = !error;
           // Cancel timeout if connected successfully
           timer.cancel();
         });
@@ -86,9 +85,9 @@ public:
       // Set up a timer to cancel the operation if it exceeds the timeout
       timer.async_wait([&](const boost::system::error_code & error) {
         if (!error) {
-          auto guard = connection_state.lock();
-          if (!guard->connected) {
-            guard->error_code = boost::asio::error::timed_out;
+          std::lock_guard<std::mutex> guard(connection_state_mutex);
+          if (!connection_state.connected) {
+            connection_state.error_code = boost::asio::error::timed_out;
             tcp_socket_.cancel();
           }
         }
@@ -102,9 +101,9 @@ public:
       boost::system::error_code captured_error;
       bool is_connected;
       {
-        auto guard = connection_state.lock();
-        captured_error = guard->error_code;
-        is_connected = guard->connected;
+        std::lock_guard<std::mutex> guard(connection_state_mutex);
+        captured_error = connection_state.error_code;
+        is_connected = connection_state.connected;
       }
 
       if (captured_error || !is_connected) {

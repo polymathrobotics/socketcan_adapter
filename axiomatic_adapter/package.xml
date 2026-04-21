@@ -12,8 +12,6 @@
 
   <depend>boost</depend>
   <depend>cli11</depend>
-  <depend>polymath_corelib</depend>
-  <depend>polymath_cpputils</depend>
   <depend>socketcan_adapter</depend>
 
   <test_depend>catch2</test_depend>

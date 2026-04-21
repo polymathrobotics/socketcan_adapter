@@ -42,8 +42,6 @@ find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_ros REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(CLI11 REQUIRED)
-find_package(polymath_corelib REQUIRED)
-find_package(polymath_cpputils REQUIRED)
 find_package(socketcan_adapter REQUIRED)
 
 # Axiomatic Adapter Library
@@ -59,8 +57,6 @@ target_link_libraries(axiomatic_adapter
   PUBLIC socketcan_adapter::socketcan_adapter
   PRIVATE
     Boost::system
-    polymath_corelib::polymath_corelib
-    polymath_cpputils::threading
 )
 
 install(DIRECTORY include/ DESTINATION include)
@@ -102,8 +98,9 @@ if(BUILD_TESTING)
   endif()
   include(Catch OPTIONAL)
 
-  # Don't run tests in CI (requires hardware: Axiomatic device + CAN interface)
-  if(NOT DEFINED ENV{CI})
+  option(HARDWARE_CONNECTED "Enable tests that require a connected Axiomatic device and CAN interface" OFF)
+
+  if(HARDWARE_CONNECTED)
     add_executable(test_axiomatic_adapter test/axiomatic_adapter_test.cpp)
     target_link_libraries(test_axiomatic_adapter PRIVATE
       axiomatic_adapter
