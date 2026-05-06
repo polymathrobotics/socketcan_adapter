@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "socketcan_adapter/can_frame.hpp"
+#include "socketcan_adapter/i_can_backend.hpp"
 
 namespace polymath::socketcan
 {
@@ -55,12 +56,19 @@ constexpr nfds_t NUM_SOCKETS_IN_ADAPTER = 1;
 
 /// @class polymath::socketcan::SocketcanAdapter
 /// @brief Creates and manages a socketcan instance and simplifies the interface.
-/// Generally does not throw, but returns booleans to tell you success
-class SocketcanAdapter : public std::enable_shared_from_this<SocketcanAdapter>
+/// Generally does not throw, but returns booleans to tell you success.
+///
+/// As of 2026-05 SocketcanAdapter implements ICanBackend so the ROS2 bridge
+/// node and other consumers can be retargeted to alternate transports (e.g.
+/// the Axiomatic AX140970 over Ethernet) without changes to call sites.
+/// Linux-specific knobs (filter vector, error mask, JOIN flag) remain
+/// concrete-only since they have no analog on non-SocketCAN backends.
+class SocketcanAdapter
+: public ICanBackend,
+  public std::enable_shared_from_this<SocketcanAdapter>
 {
 public:
-  /// @brief Mapped to std lib, but should be remapped to Polymath Safety compatible versions
-  using socket_error_string_t = std::string;
+  using socket_error_string_t = ICanBackend::socket_error_string_t;
   using filter_vector_t = std::vector<struct can_filter>;
 
   /// @brief SocketcanAdapter Class Init
@@ -70,15 +78,15 @@ public:
     const std::chrono::duration<float> & receive_timeout_s = SOCKET_RECEIVE_TIMEOUT_S);
 
   /// @brief Destructor for SocketcanAdapter
-  virtual ~SocketcanAdapter();
+  ~SocketcanAdapter() override;
 
   /// @brief Open Socket
   /// @return bool successfully opened socket
-  bool openSocket();
+  bool openSocket() override;
 
   /// @brief Close Socket
   /// @return bool successfully closed socket
-  bool closeSocket();
+  bool closeSocket() override;
 
   /// @brief Set a number of filters, vectorized
   /// @param filters reference to a vector of can filters to set for the socket
@@ -108,7 +116,7 @@ public:
   /// @brief Receive with a reference to a CanFrame to fill
   /// @param frame OUTPUT CanFrame to fill
   /// @return optional error string filled with an error message if any
-  std::optional<socket_error_string_t> receive(CanFrame & can_frame);
+  std::optional<socket_error_string_t> receive(CanFrame & can_frame) override;
 
   /// TODO: Switch to unique ptr
   /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/8
@@ -124,27 +132,30 @@ public:
 
   /// @brief Start a reception thread (calls callback)
   /// @return success on started
-  bool startReceptionThread();
+  bool startReceptionThread() override;
 
   /// @brief Stop and join reception thread
   /// @param timeout_s INPUT timeout in seconds, <=0 means no timeout
   /// @return success on closed and joined thread
-  bool joinReceptionThread(const std::chrono::duration<float> & timeout_s = JOIN_RECEPTION_TIMEOUT_S);
+  bool joinReceptionThread(
+    const std::chrono::duration<float> & timeout_s = JOIN_RECEPTION_TIMEOUT_S) override;
 
   /// @brief Set receive callback function if thread is used
   /// @param callback_function INPUT To be called on receipt of a can frame
   /// @return success on receive callback set
-  bool setOnReceiveCallback(std::function<void(std::unique_ptr<const CanFrame> frame)> && callback_function);
+  bool setOnReceiveCallback(
+    std::function<void(std::unique_ptr<const CanFrame> frame)> && callback_function) override;
 
   /// @brief Set receive callback function if thread is used
   /// @param callback_function INPUT To be called on receipt of a can frame
   /// @return success on error callback set
-  bool setOnErrorCallback(std::function<void(socket_error_string_t error)> && callback_function);
+  bool setOnErrorCallback(
+    std::function<void(socket_error_string_t error)> && callback_function) override;
 
   /// @brief Transmit a can frame via socket
   /// @param frame INPUT const reference to the frame
   /// @return optional error string filled with an error message if any
-  std::optional<socket_error_string_t> send(const CanFrame & frame);
+  std::optional<socket_error_string_t> send(const CanFrame & frame) override;
 
   /// @brief Transmit a can frame via socket
   /// @param frame INPUT shared_ptr to frame. Convert non-const to const by doing
@@ -154,7 +165,7 @@ public:
   /// std::shared_ptr<const CanFrame> frame = frame
   /// ```
   /// @return optional error string filled with an error message if any
-  std::optional<socket_error_string_t> send(const std::shared_ptr<const CanFrame> frame);
+  std::optional<socket_error_string_t> send(const std::shared_ptr<const CanFrame> frame) override;
 
   /// @brief Transmit a can frame via socket
   /// @param frame Linux CAN frame to send
@@ -167,7 +178,7 @@ public:
 
   /// @brief Get state of socket
   /// @return SocketState data type detailing OPEN or CLOSED
-  SocketState get_socket_state();
+  SocketState get_socket_state() override;
 
   /// @brief Get interface
   /// @return Can interface
@@ -175,7 +186,7 @@ public:
 
   /// @brief Checks if the receive thread is running
   /// @return True if the thread is running, false otherwise
-  bool is_thread_running();
+  bool is_thread_running() override;
 
 private:
   /// @brief Wraps C level socket operations to set can_filter frames
