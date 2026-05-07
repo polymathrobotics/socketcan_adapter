@@ -23,13 +23,13 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>
 
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
-#include <boost/system/error_code.hpp>
 
 namespace polymath
 {
@@ -69,12 +69,12 @@ public:
       boost::asio::steady_timer timer(tcp_io_context_);
       timer.expires_after(TCP_IP_CONNECTION_TIMEOUT_MS);
 
-      TCPSocketConnectionState connection_state{false, boost::asio::error::would_block};
+      TCPSocketConnectionState connection_state{false, std::make_error_code(std::errc::operation_would_block)};
       std::mutex connection_state_mutex;
 
       // Asynchronously attempt to connect
       boost::asio::async_connect(
-        tcp_socket_, endpoints, [&](const boost::system::error_code & error, const boost::asio::ip::tcp::endpoint &) {
+        tcp_socket_, endpoints, [&](const std::error_code & error, const boost::asio::ip::tcp::endpoint &) {
           std::lock_guard<std::mutex> guard(connection_state_mutex);
           connection_state.error_code = error;
           connection_state.connected = !error;
@@ -83,11 +83,11 @@ public:
         });
 
       // Set up a timer to cancel the operation if it exceeds the timeout
-      timer.async_wait([&](const boost::system::error_code & error) {
+      timer.async_wait([&](const std::error_code & error) {
         if (!error) {
           std::lock_guard<std::mutex> guard(connection_state_mutex);
           if (!connection_state.connected) {
-            connection_state.error_code = boost::asio::error::timed_out;
+            connection_state.error_code = std::make_error_code(std::errc::timed_out);
             tcp_socket_.cancel();
           }
         }
@@ -98,7 +98,7 @@ public:
       tcp_io_context_.run();
 
       // capture the error message and connection state
-      boost::system::error_code captured_error;
+      std::error_code captured_error;
       bool is_connected;
       {
         std::lock_guard<std::mutex> guard(connection_state_mutex);
@@ -124,16 +124,14 @@ public:
   bool closeSocket()
   {
     if (socket_state_ != TCPSocketState::CLOSED) {
-      boost::system::error_code error_code;
-      tcp_socket_.close(error_code);
-
-      if (error_code) {
-        std::cerr << "[ERROR] Failed to close TCP socket: " << error_code.message() << std::endl;
+      try {
+        tcp_socket_.close();
+      } catch (const std::exception & e) {
+        std::cerr << "[ERROR] Failed to close TCP socket: " << e.what() << std::endl;
         return false;
-      } else {
-        socket_state_ = TCPSocketState::CLOSED;
-        return true;
       }
+      socket_state_ = TCPSocketState::CLOSED;
+      return true;
     }
     return true;
   }
@@ -184,7 +182,7 @@ public:
   {
     std::vector<uint8_t> data(1024, 0);
     std::atomic<bool> data_received(false);
-    boost::system::error_code error_code;
+    std::error_code error_code;
 
     // Set up the timer for timeout
     boost::asio::steady_timer timer(tcp_io_context_);
@@ -192,7 +190,7 @@ public:
 
     // Start async receive operation
     tcp_socket_.async_receive(
-      boost::asio::buffer(data), [&](const boost::system::error_code & error, std::size_t bytes_transferred) {
+      boost::asio::buffer(data), [&](const std::error_code & error, std::size_t bytes_transferred) {
         error_code = error;
         if (!error) {
           data.resize(bytes_transferred);
@@ -202,9 +200,9 @@ public:
       });
 
     // Set up the timer to handle timeout cancellation
-    timer.async_wait([&](const boost::system::error_code & error) {
+    timer.async_wait([&](const std::error_code & error) {
       if (!error && !data_received.load()) {
-        error_code = boost::asio::error::timed_out;
+        error_code = std::make_error_code(std::errc::timed_out);
         // Cancel the ongoing async receive operation on timeout (does not close socket)
         tcp_socket_.cancel();
       }
@@ -215,7 +213,7 @@ public:
     tcp_io_context_.run();
 
     // Check for timeout or other errors
-    if (error_code == boost::asio::error::timed_out) {
+    if (error_code == std::errc::timed_out) {
       return std::optional<AxiomaticAdapter::socket_error_string_t>("Receive operation timed out");
     } else if (error_code) {
       return std::optional<AxiomaticAdapter::socket_error_string_t>(
@@ -353,7 +351,7 @@ private:
   struct TCPSocketConnectionState
   {
     bool connected{false};
-    boost::system::error_code error_code{boost::asio::error::would_block};
+    std::error_code error_code{std::make_error_code(std::errc::operation_would_block)};
   };
 
   boost::asio::io_context tcp_io_context_;
