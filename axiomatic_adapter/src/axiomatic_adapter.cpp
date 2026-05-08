@@ -21,6 +21,7 @@
 #include <atomic>
 #include <future>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -349,15 +350,13 @@ public:
   // Mirrors SocketcanAdapter's behavior: plain assignment, no synchronization.
   // The convention is "set before startReceptionThread()" to avoid racing the
   // rx thread.
-  bool setOnReceiveCallback(
-    std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> && cb)
+  bool setOnReceiveCallback(std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> && cb)
   {
     receive_callback_ = std::move(cb);
     return true;
   }
 
-  bool setOnErrorCallback(
-    std::function<void(AxiomaticAdapter::socket_error_string_t error)> && cb)
+  bool setOnErrorCallback(std::function<void(AxiomaticAdapter::socket_error_string_t error)> && cb)
   {
     error_callback_ = std::move(cb);
     return true;
@@ -463,8 +462,7 @@ bool AxiomaticAdapter::is_thread_running()
 
 bool AxiomaticAdapter::joinReceptionThread(const std::chrono::duration<float> & timeout_s)
 {
-  return pimpl_->joinReceptionThread(
-    std::chrono::duration_cast<std::chrono::milliseconds>(timeout_s));
+  return pimpl_->joinReceptionThread(std::chrono::duration_cast<std::chrono::milliseconds>(timeout_s));
 }
 
 std::optional<AxiomaticAdapter::socket_error_string_t> AxiomaticAdapter::send(
@@ -477,14 +475,12 @@ std::optional<AxiomaticAdapter::socket_error_string_t> AxiomaticAdapter::send(
 }
 
 bool AxiomaticAdapter::setOnReceiveCallback(
-  std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> &&
-    callback_function)
+  std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> && callback_function)
 {
   return pimpl_->setOnReceiveCallback(std::move(callback_function));
 }
 
-bool AxiomaticAdapter::setOnErrorCallback(
-  std::function<void(socket_error_string_t error)> && callback_function)
+bool AxiomaticAdapter::setOnErrorCallback(std::function<void(socket_error_string_t error)> && callback_function)
 {
   return pimpl_->setOnErrorCallback(std::move(callback_function));
 }

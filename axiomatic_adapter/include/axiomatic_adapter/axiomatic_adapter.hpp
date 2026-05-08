@@ -51,9 +51,7 @@ using TCPSocketState = polymath::socketcan::SocketState;
 /// receive + error callbacks remains the canonical setup path, and runtime
 /// callback setters were added to satisfy the interface — set them BEFORE
 /// startReceptionThread() to avoid a benign race with the rx thread.
-class AxiomaticAdapter
-: public polymath::socketcan::ICanBackend,
-  public std::enable_shared_from_this<AxiomaticAdapter>
+class AxiomaticAdapter : public polymath::socketcan::ICanBackend, public std::enable_shared_from_this<AxiomaticAdapter>
 {
 public:
   using socket_error_string_t = polymath::socketcan::ICanBackend::socket_error_string_t;
@@ -117,8 +115,7 @@ public:
   /// @brief Transmit a can frame via socket
   /// @param frame INPUT shared_ptr to a frame to send (ICanBackend overload).
   /// @return optional error string filled with an error message if any
-  std::optional<socket_error_string_t> send(
-    const std::shared_ptr<const polymath::socketcan::CanFrame> frame) override;
+  std::optional<socket_error_string_t> send(const std::shared_ptr<const polymath::socketcan::CanFrame> frame) override;
 
   /// @brief Transmit a can frame via socket
   /// @param frame Linux CAN frame to send
@@ -140,14 +137,12 @@ public:
   /// Set BEFORE calling startReceptionThread() to avoid racing the rx thread.
   /// @return true on success.
   bool setOnReceiveCallback(
-    std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> &&
-      callback_function) override;
+    std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> && callback_function) override;
 
   /// @brief Set the error callback after construction (ICanBackend interface).
   /// Set BEFORE calling startReceptionThread() to avoid racing the rx thread.
   /// @return true on success.
-  bool setOnErrorCallback(
-    std::function<void(socket_error_string_t error)> && callback_function) override;
+  bool setOnErrorCallback(std::function<void(socket_error_string_t error)> && callback_function) override;
 
 private:
   /// @brief use Implemention (pimpl) to avoid including boost/asio.hpp in header + linking in CMake

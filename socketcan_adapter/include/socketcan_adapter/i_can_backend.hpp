@@ -33,7 +33,7 @@ namespace polymath::socketcan
 enum class SocketState;  // forward — defined in socketcan_adapter.hpp
 
 /// @brief FilterMode for how to add filters
-enum class FilterMode;   // forward — defined in socketcan_adapter.hpp
+enum class FilterMode;  // forward — defined in socketcan_adapter.hpp
 
 /// @class polymath::socketcan::ICanBackend
 /// @brief Cross-cutting interface implemented by every CAN transport backend.
@@ -80,8 +80,7 @@ public:
   /// @brief Transmit a frame.
   /// @param frame INPUT shared_ptr to a frame to send.
   /// @return optional error string if any.
-  virtual std::optional<socket_error_string_t> send(
-    const std::shared_ptr<const CanFrame> frame) = 0;
+  virtual std::optional<socket_error_string_t> send(const std::shared_ptr<const CanFrame> frame) = 0;
 
   /// @brief Transmit a frame.
   virtual std::optional<socket_error_string_t> send(const CanFrame & frame) = 0;
@@ -97,16 +96,13 @@ public:
 
   virtual bool startReceptionThread() = 0;
 
-  virtual bool joinReceptionThread(
-    const std::chrono::duration<float> & timeout_s) = 0;
+  virtual bool joinReceptionThread(const std::chrono::duration<float> & timeout_s) = 0;
 
   virtual bool is_thread_running() = 0;
 
-  virtual bool setOnReceiveCallback(
-    std::function<void(std::unique_ptr<const CanFrame> frame)> && callback) = 0;
+  virtual bool setOnReceiveCallback(std::function<void(std::unique_ptr<const CanFrame> frame)> && callback) = 0;
 
-  virtual bool setOnErrorCallback(
-    std::function<void(socket_error_string_t error)> && callback) = 0;
+  virtual bool setOnErrorCallback(std::function<void(socket_error_string_t error)> && callback) = 0;
 };
 
 }  // namespace polymath::socketcan

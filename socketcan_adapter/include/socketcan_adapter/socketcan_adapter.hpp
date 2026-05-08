@@ -63,9 +63,7 @@ constexpr nfds_t NUM_SOCKETS_IN_ADAPTER = 1;
 /// the Axiomatic AX140970 over Ethernet) without changes to call sites.
 /// Linux-specific knobs (filter vector, error mask, JOIN flag) remain
 /// concrete-only since they have no analog on non-SocketCAN backends.
-class SocketcanAdapter
-: public ICanBackend,
-  public std::enable_shared_from_this<SocketcanAdapter>
+class SocketcanAdapter : public ICanBackend, public std::enable_shared_from_this<SocketcanAdapter>
 {
 public:
   using socket_error_string_t = ICanBackend::socket_error_string_t;
@@ -137,20 +135,17 @@ public:
   /// @brief Stop and join reception thread
   /// @param timeout_s INPUT timeout in seconds, <=0 means no timeout
   /// @return success on closed and joined thread
-  bool joinReceptionThread(
-    const std::chrono::duration<float> & timeout_s = JOIN_RECEPTION_TIMEOUT_S) override;
+  bool joinReceptionThread(const std::chrono::duration<float> & timeout_s = JOIN_RECEPTION_TIMEOUT_S) override;
 
   /// @brief Set receive callback function if thread is used
   /// @param callback_function INPUT To be called on receipt of a can frame
   /// @return success on receive callback set
-  bool setOnReceiveCallback(
-    std::function<void(std::unique_ptr<const CanFrame> frame)> && callback_function) override;
+  bool setOnReceiveCallback(std::function<void(std::unique_ptr<const CanFrame> frame)> && callback_function) override;
 
   /// @brief Set receive callback function if thread is used
   /// @param callback_function INPUT To be called on receipt of a can frame
   /// @return success on error callback set
-  bool setOnErrorCallback(
-    std::function<void(socket_error_string_t error)> && callback_function) override;
+  bool setOnErrorCallback(std::function<void(socket_error_string_t error)> && callback_function) override;
 
   /// @brief Transmit a can frame via socket
   /// @param frame INPUT const reference to the frame
