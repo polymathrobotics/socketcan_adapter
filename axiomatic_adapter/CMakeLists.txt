@@ -105,9 +105,20 @@ if(BUILD_TESTING)
 
   # Pure-software tests: framer logic and the send-length wire encoding via a
   # localhost TCP loopback. No Axiomatic hardware required.
-  add_executable(test_axiomatic_frame_parser test/axiomatic_frame_parser_test.cpp)
+  #
+  # Sources are compiled directly into each test executable rather than linked
+  # via the shared library. This makes the tests independent of any older
+  # libaxiomatic_adapter.so that might be on LD_LIBRARY_PATH from a prior
+  # install (e.g. /opt/polymath) and would otherwise shadow the freshly-built
+  # symbols at runtime.
+  add_executable(test_axiomatic_frame_parser
+    test/axiomatic_frame_parser_test.cpp
+    src/axiomatic_frame_parser.cpp
+  )
+  target_include_directories(test_axiomatic_frame_parser PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
   target_link_libraries(test_axiomatic_frame_parser PRIVATE
-    axiomatic_adapter
     socketcan_adapter::socketcan_adapter
     Catch2::Catch2WithMain
   )
@@ -117,9 +128,15 @@ if(BUILD_TESTING)
     add_test(NAME test_axiomatic_frame_parser COMMAND test_axiomatic_frame_parser)
   endif()
 
-  add_executable(test_axiomatic_send_wire_format test/axiomatic_send_wire_format_test.cpp)
+  add_executable(test_axiomatic_send_wire_format
+    test/axiomatic_send_wire_format_test.cpp
+    src/axiomatic_adapter.cpp
+    src/axiomatic_frame_parser.cpp
+  )
+  target_include_directories(test_axiomatic_send_wire_format PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
   target_link_libraries(test_axiomatic_send_wire_format PRIVATE
-    axiomatic_adapter
     socketcan_adapter::socketcan_adapter
     Boost::system
     Catch2::Catch2WithMain
