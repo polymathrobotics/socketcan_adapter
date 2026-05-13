@@ -46,7 +46,8 @@ public:
     const std::string & port,
     const std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> && receive_callback_function,
     const std::function<void(AxiomaticAdapter::socket_error_string_t error)> && error_callback_function,
-    const std::chrono::milliseconds & receive_timeout_ms)
+    const std::chrono::milliseconds & receive_timeout_ms,
+    bool verbose)
   : tcp_io_context_()
   , tcp_socket_(tcp_io_context_)
   , ip_address_(ip_address)
@@ -54,7 +55,9 @@ public:
   , receive_callback_(receive_callback_function)
   , error_callback_(error_callback_function)
   , receive_timeout_ms_(receive_timeout_ms)
-  {}
+  {
+    parser_.set_verbose(verbose);
+  }
 
   ~AxiomaticAdapterImpl()
   {
@@ -274,12 +277,18 @@ public:
     control_byte |= (is_extended ? (1 << 4) : 0);
     control_byte |= (frame_data_length & 0x0F);
 
-    // initialize the full message with the header, control bytes, timestamp bytes
+    // Build the protocol envelope: 6-byte SYNC_PREFIX, Message ID = 1
+    // (deprecated CAN Stream), Message Version 0, Message Data Length, then
+    // the body (control byte + timestamp + CAN ID + data).
     std::vector<uint8_t> full_message;
     full_message.insert(
-      full_message.end(), AxiomaticFrameParser::HEADER.begin(), AxiomaticFrameParser::HEADER.end());
-    full_message.push_back(0x00);
-    full_message.push_back(0x00);
+      full_message.end(), AxiomaticFrameParser::SYNC_PREFIX.begin(),
+      AxiomaticFrameParser::SYNC_PREFIX.end());
+    full_message.push_back(
+      static_cast<uint8_t>(AxiomaticFrameParser::MSG_ID_CAN_STREAM_DEPRECATED & 0xFF));
+    full_message.push_back(
+      static_cast<uint8_t>((AxiomaticFrameParser::MSG_ID_CAN_STREAM_DEPRECATED >> 8) & 0xFF));
+    full_message.push_back(0x00);  // Message Version
     full_message.push_back(static_cast<uint8_t>(message_length & 0xFF));
     full_message.push_back(static_cast<uint8_t>((message_length >> 8) & 0xFF));
     full_message.push_back(control_byte);
@@ -352,9 +361,11 @@ AxiomaticAdapter::AxiomaticAdapter(
   const std::string & port,
   const std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> && receive_callback_function,
   const std::function<void(AxiomaticAdapter::socket_error_string_t error)> && error_callback_function,
-  const std::chrono::milliseconds & receive_timeout_ms)
+  const std::chrono::milliseconds & receive_timeout_ms,
+  bool verbose)
 : pimpl_(std::make_unique<AxiomaticAdapterImpl>(
-    ip_address, port, std::move(receive_callback_function), std::move(error_callback_function), receive_timeout_ms))
+    ip_address, port, std::move(receive_callback_function), std::move(error_callback_function),
+    receive_timeout_ms, verbose))
 {}
 
 AxiomaticAdapter::~AxiomaticAdapter()

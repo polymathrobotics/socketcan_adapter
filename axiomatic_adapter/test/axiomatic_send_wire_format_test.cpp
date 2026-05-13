@@ -134,12 +134,15 @@ void assertEncodingMatchesDlc(uint16_t can_id, const std::vector<uint8_t> & payl
 
   REQUIRE(bytes.size() >= expected_total);
 
-  // Header check.
-  for (size_t i = 0; i < AxiomaticFrameParser::HEADER.size(); ++i) {
-    REQUIRE(bytes[i] == AxiomaticFrameParser::HEADER[i]);
+  // 6-byte sync prefix.
+  for (size_t i = 0; i < AxiomaticFrameParser::SYNC_PREFIX.size(); ++i) {
+    REQUIRE(bytes[i] == AxiomaticFrameParser::SYNC_PREFIX[i]);
   }
-  // Reserved bytes.
-  REQUIRE(bytes[7] == 0x00);
+  // Message ID (bytes 6-7) must be the deprecated CAN Stream (= 1).
+  const uint16_t msg_id = static_cast<uint16_t>(bytes[6]) |
+                          (static_cast<uint16_t>(bytes[7]) << 8);
+  REQUIRE(msg_id == AxiomaticFrameParser::MSG_ID_CAN_STREAM_DEPRECATED);
+  // Message Version is currently always 0.
   REQUIRE(bytes[8] == 0x00);
 
   // Declared message_length must equal control(1) + timestamp(2) + id(2) + dlc.
