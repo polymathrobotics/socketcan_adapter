@@ -105,7 +105,7 @@ void AxiomaticSocketcanBridge::socketcanReceiveCallback(std::unique_ptr<const po
   }
 
   auto result = axiomatic_adapter_.send(frame_copy);
-  if (!result) {
+  if (result) {
     std::cerr << "[SocketCAN RX] Failed to send CAN frame with message: " << *result << std::endl;
   }
 }
@@ -128,7 +128,7 @@ void AxiomaticSocketcanBridge::ethcanReceiveCallback(std::unique_ptr<const polym
   }
 
   auto result = socketcan_adapter_.send(frame_copy);
-  if (!result) {
+  if (result) {
     std::cerr << "[EthCAN RX] Failed to send CAN frame with message: " << *result << std::endl;
   }
 }
