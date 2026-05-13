@@ -31,6 +31,8 @@
 #include <boost/asio/steady_timer.hpp>
 #include <boost/system/error_code.hpp>
 
+#include "axiomatic_adapter/axiomatic_frame_parser.hpp"
+
 namespace polymath
 {
 namespace can
@@ -154,9 +156,11 @@ public:
 
         if (!error) {
           receive_callback_(std::make_unique<polymath::socketcan::CanFrame>(frame));
-        } else {
+        } else if (*error != INCOMPLETE_FRAME_SENTINEL) {
           error_callback_(*error);
         }
+        // INCOMPLETE_FRAME_SENTINEL: the read returned bytes but not yet a full
+        // CAN frame. Loop again to read more; do not surface as a user error.
       }
 
       thread_running_ = false;
@@ -182,6 +186,14 @@ public:
 
   std::optional<AxiomaticAdapter::socket_error_string_t> receive(polymath::socketcan::CanFrame & can_frame)
   {
+    // First drain anything left over in the parser from a previous TCP read.
+    // This is what makes coalesced frames work: one read may yield N frames,
+    // and the reception loop calls us back-to-back to deliver each one.
+    if (auto frame = parser_.tryParseFrame()) {
+      can_frame = *frame;
+      return std::nullopt;
+    }
+
     std::vector<uint8_t> data(1024, 0);
     std::atomic<bool> data_received(false);
     boost::system::error_code error_code;
@@ -222,62 +234,16 @@ public:
         "Receive operation failed: " + error_code.message());
     }
 
-    // --- Process the received data ---
+    parser_.append(data.data(), data.size());
 
-    // Check size, header info and message type
-    if (data.size() < AXIOMATIC_CAN_MESSAGE_HEADER.size() + 5) {
-      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Data too short for header and control byte.");
-    }
-    if (!std::equal(AXIOMATIC_CAN_MESSAGE_HEADER.begin(), AXIOMATIC_CAN_MESSAGE_HEADER.end(), data.begin())) {
-      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Not a valid CAN message.");
+    if (auto frame = parser_.tryParseFrame()) {
+      can_frame = *frame;
+      return std::nullopt;
     }
 
-    uint8_t control_byte = data[11];
-    // Extract timestamp size (bits 6 & 5)
-    size_t timestamp_size = (control_byte & 0x60) >> 5;
-    // Check if the frame is extended (bit 4)
-    bool is_can_extended = (control_byte & 0x10) >> 4;
-    // Extract CAN frame length (lower 4 bits)
-    size_t can_length = control_byte & 0x0F;
-
-    // Determine where the CAN ID starts (after timestamp bytes)
-    size_t can_id_start = 12 + timestamp_size;
-    uint32_t can_id = 0;
-    size_t can_data_start = 0;
-
-    // Ensure data is large enough for CAN ID extraction
-    size_t min_id_size = is_can_extended ? 4 : 2;
-    if (data.size() < can_id_start + min_id_size) {
-      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Data too short for CAN ID.");
-    }
-
-    // Extract CAN ID (little-endian)
-    if (!is_can_extended) {
-      can_id = static_cast<uint16_t>(data[can_id_start] | (data[can_id_start + 1] << 8));
-      can_data_start = can_id_start + 2;
-    } else {
-      can_id = static_cast<uint32_t>(
-        data[can_id_start] | (data[can_id_start + 1] << 8) | (data[can_id_start + 2] << 16) |
-        (data[can_id_start + 3] << 24));
-      can_data_start = can_id_start + 4;
-      can_frame.set_id_as_extended();
-    }
-
-    // Ensure data is large enough for CAN payload
-    if (data.size() < can_data_start + can_length) {
-      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Data too short for CAN payload.");
-    }
-
-    // Extract CAN data (zero-padded to 8 bytes)
-    std::array<uint8_t, 8> can_data = {0};
-    std::copy_n(data.begin() + can_data_start, can_length, can_data.begin());
-
-    // Set CAN frame properties
-    can_frame.set_can_id(can_id);
-    can_frame.set_len(can_length);
-    can_frame.set_data(can_data);
-
-    return std::nullopt;
+    // Bytes arrived but not yet a complete frame. The reception loop treats
+    // this sentinel as a no-op and will call receive() again immediately.
+    return std::optional<AxiomaticAdapter::socket_error_string_t>(INCOMPLETE_FRAME_SENTINEL);
   }
 
   std::optional<const polymath::socketcan::CanFrame> receive()
@@ -310,7 +276,8 @@ public:
 
     // initialize the full message with the header, control bytes, timestamp bytes
     std::vector<uint8_t> full_message;
-    full_message.insert(full_message.end(), AXIOMATIC_CAN_MESSAGE_HEADER.begin(), AXIOMATIC_CAN_MESSAGE_HEADER.end());
+    full_message.insert(
+      full_message.end(), AxiomaticFrameParser::HEADER.begin(), AxiomaticFrameParser::HEADER.end());
     full_message.push_back(0x00);
     full_message.push_back(0x00);
     full_message.push_back(static_cast<uint8_t>(message_length & 0xFF));
@@ -324,8 +291,10 @@ public:
     for (size_t i = 0; i < frame_id_byte_length; ++i) {
       full_message.push_back(static_cast<uint8_t>((can_id >> (i * 8)) & 0xFF));
     }
-    // insert the can frame data
-    full_message.insert(full_message.end(), frame_data.begin(), frame_data.end());
+    // insert the can frame data — only the DLC-many bytes so that the declared
+    // message_length matches the actual payload on the wire.
+    full_message.insert(
+      full_message.end(), frame_data.begin(), frame_data.begin() + frame_data_length);
 
     try {
       boost::asio::write(tcp_socket_, boost::asio::buffer(full_message.data(), full_message.size()));
@@ -346,8 +315,12 @@ public:
   }
 
 private:
-  static constexpr std::array<uint8_t, 7> AXIOMATIC_CAN_MESSAGE_HEADER = {'A', 'X', 'I', 'O', 0xBA, 0x36, 0x01};
   static constexpr std::chrono::milliseconds TCP_IP_CONNECTION_TIMEOUT_MS{3000};
+
+  // Sentinel error string returned by receive() when bytes arrived but a full
+  // CAN frame is not yet assembled. The reception loop checks this by value
+  // and continues without firing the user's error callback.
+  static inline const std::string INCOMPLETE_FRAME_SENTINEL{"__axiomatic_incomplete_frame__"};
 
   /// @brief Socket connection state as a struct for the mutex during TCP Open Socket to update the variables together
   struct TCPSocketConnectionState
@@ -363,6 +336,8 @@ private:
   std::thread tcp_receive_thread_;
   std::atomic<bool> thread_running_;
   std::atomic<bool> stop_thread_requested_;
+
+  AxiomaticFrameParser parser_;
 
   // from construction
   std::string ip_address_;
