@@ -147,6 +147,25 @@ if(BUILD_TESTING)
     add_test(NAME test_axiomatic_send_wire_format COMMAND test_axiomatic_send_wire_format)
   endif()
 
+  add_executable(test_axiomatic_concurrent_io
+    test/axiomatic_concurrent_io_test.cpp
+    src/axiomatic_adapter.cpp
+    src/axiomatic_frame_parser.cpp
+  )
+  target_include_directories(test_axiomatic_concurrent_io PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_axiomatic_concurrent_io PRIVATE
+    socketcan_adapter::socketcan_adapter
+    Boost::system
+    Catch2::Catch2WithMain
+  )
+  if(COMMAND catch_discover_tests)
+    catch_discover_tests(test_axiomatic_concurrent_io)
+  else()
+    add_test(NAME test_axiomatic_concurrent_io COMMAND test_axiomatic_concurrent_io)
+  endif()
+
   if(HARDWARE_CONNECTED)
     add_executable(test_axiomatic_adapter test/axiomatic_adapter_test.cpp)
     target_link_libraries(test_axiomatic_adapter PRIVATE

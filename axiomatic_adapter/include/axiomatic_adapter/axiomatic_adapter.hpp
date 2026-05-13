@@ -48,7 +48,7 @@ public:
   /// @brief Mapped to std lib, but should be remapped to Polymath Safety compatible versions
   using socket_error_string_t = std::string;
 
-  static constexpr std::chrono::milliseconds DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS{100};
+  static constexpr std::chrono::milliseconds DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS{20};
   static constexpr std::chrono::milliseconds JOIN_RECEPTION_TIMEOUT_MS{100};
 
   /// @brief AxiomaticAdapter Class Init
