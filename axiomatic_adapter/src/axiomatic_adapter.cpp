@@ -139,7 +139,7 @@ public:
       // the wire immediately, not being buffered up to ~40 ms waiting for an
       // ACK or batch.
       boost::system::error_code nd_ec;
-      tcp_socket_.set_option(boost::asio::ip::tcp::no_delay(true), nd_ec);
+      // tcp_socket_.set_option(boost::asio::ip::tcp::no_delay(true), nd_ec);
       if (nd_ec) {
         std::cerr << "[Axiomatic] Failed to set TCP_NODELAY: " << nd_ec.message() << std::endl;
         // Non-fatal — connection is still usable, just slower.
