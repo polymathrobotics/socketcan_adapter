@@ -21,6 +21,7 @@
 #include <atomic>
 #include <future>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -345,6 +346,22 @@ public:
     return thread_running_;
   }
 
+  // Runtime callback setters — added 2026-05 for the ICanBackend retrofit.
+  // Mirrors SocketcanAdapter's behavior: plain assignment, no synchronization.
+  // The convention is "set before startReceptionThread()" to avoid racing the
+  // rx thread.
+  bool setOnReceiveCallback(std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> && cb)
+  {
+    receive_callback_ = std::move(cb);
+    return true;
+  }
+
+  bool setOnErrorCallback(std::function<void(AxiomaticAdapter::socket_error_string_t error)> && cb)
+  {
+    error_callback_ = std::move(cb);
+    return true;
+  }
+
 private:
   static constexpr std::array<uint8_t, 7> AXIOMATIC_CAN_MESSAGE_HEADER = {'A', 'X', 'I', 'O', 0xBA, 0x36, 0x01};
   static constexpr std::chrono::milliseconds TCP_IP_CONNECTION_TIMEOUT_MS{3000};
@@ -429,7 +446,7 @@ std::optional<AxiomaticAdapter::socket_error_string_t> AxiomaticAdapter::send(co
   return send(polymath::socketcan::CanFrame(frame));
 }
 
-TCPSocketState AxiomaticAdapter::get_socket_state()
+polymath::socketcan::SocketState AxiomaticAdapter::get_socket_state()
 {
   return pimpl_->get_socket_state();
 }
@@ -437,6 +454,35 @@ TCPSocketState AxiomaticAdapter::get_socket_state()
 bool AxiomaticAdapter::is_thread_running()
 {
   return pimpl_->is_thread_running();
+}
+
+// ---------------------------------------------------------------------------
+// ICanBackend bridge methods — added 2026-05 for the AxiomaticAdapter retrofit.
+// ---------------------------------------------------------------------------
+
+bool AxiomaticAdapter::joinReceptionThread(const std::chrono::duration<float> & timeout_s)
+{
+  return pimpl_->joinReceptionThread(std::chrono::duration_cast<std::chrono::milliseconds>(timeout_s));
+}
+
+std::optional<AxiomaticAdapter::socket_error_string_t> AxiomaticAdapter::send(
+  const std::shared_ptr<const polymath::socketcan::CanFrame> frame)
+{
+  if (!frame) {
+    return std::optional<socket_error_string_t>{"send: null frame"};
+  }
+  return pimpl_->send(*frame);
+}
+
+bool AxiomaticAdapter::setOnReceiveCallback(
+  std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> && callback_function)
+{
+  return pimpl_->setOnReceiveCallback(std::move(callback_function));
+}
+
+bool AxiomaticAdapter::setOnErrorCallback(std::function<void(socket_error_string_t error)> && callback_function)
+{
+  return pimpl_->setOnErrorCallback(std::move(callback_function));
 }
 
 }  // namespace can
