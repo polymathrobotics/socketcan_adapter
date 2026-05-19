@@ -51,6 +51,12 @@ public:
   static constexpr std::chrono::milliseconds DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS{100};
   static constexpr std::chrono::milliseconds JOIN_RECEPTION_TIMEOUT_MS{100};
 
+  /// @brief Returned from receive() when a TCP read contained only non-CAN-Stream protocol
+  /// messages (heartbeats, status responses, unknown IDs). Not a real error — the reception
+  /// thread skips it silently. External callers using receive() directly can compare against
+  /// this constant to distinguish "no CAN frame this round" from a genuine socket error.
+  static constexpr const char * NON_FRAME_PROTOCOL_MESSAGE = "axiomatic: non-CAN-Stream protocol message consumed";
+
   /// @brief AxiomaticAdapter Class Init
   /// @param ip_address Axiomatic Device IP address to connect
   /// @param port Axiomatic Device Port to connect to
