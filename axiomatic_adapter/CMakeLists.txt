@@ -45,7 +45,10 @@ find_package(CLI11 REQUIRED)
 find_package(socketcan_adapter REQUIRED)
 
 # Axiomatic Adapter Library
-add_library(axiomatic_adapter SHARED src/axiomatic_adapter.cpp)
+add_library(axiomatic_adapter SHARED
+  src/axiomatic_adapter.cpp
+  src/axiomatic_frame_parser.cpp
+)
 
 target_compile_features(axiomatic_adapter PUBLIC c_std_99 cxx_std_17)
 target_include_directories(axiomatic_adapter PUBLIC
@@ -99,6 +102,69 @@ if(BUILD_TESTING)
   include(Catch OPTIONAL)
 
   option(HARDWARE_CONNECTED "Enable tests that require a connected Axiomatic device and CAN interface" OFF)
+
+  # Pure-software tests: framer logic and the send-length wire encoding via a
+  # localhost TCP loopback. No Axiomatic hardware required.
+  #
+  # Sources are compiled directly into each test executable rather than linked
+  # via the shared library. This makes the tests independent of any older
+  # libaxiomatic_adapter.so that might be on LD_LIBRARY_PATH from a prior
+  # install (e.g. /opt/polymath) and would otherwise shadow the freshly-built
+  # symbols at runtime.
+  add_executable(test_axiomatic_frame_parser
+    test/axiomatic_frame_parser_test.cpp
+    src/axiomatic_frame_parser.cpp
+  )
+  target_include_directories(test_axiomatic_frame_parser PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_axiomatic_frame_parser PRIVATE
+    socketcan_adapter::socketcan_adapter
+    Catch2::Catch2WithMain
+  )
+  if(COMMAND catch_discover_tests)
+    catch_discover_tests(test_axiomatic_frame_parser)
+  else()
+    add_test(NAME test_axiomatic_frame_parser COMMAND test_axiomatic_frame_parser)
+  endif()
+
+  add_executable(test_axiomatic_send_wire_format
+    test/axiomatic_send_wire_format_test.cpp
+    src/axiomatic_adapter.cpp
+    src/axiomatic_frame_parser.cpp
+  )
+  target_include_directories(test_axiomatic_send_wire_format PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_axiomatic_send_wire_format PRIVATE
+    socketcan_adapter::socketcan_adapter
+    Boost::system
+    Catch2::Catch2WithMain
+  )
+  if(COMMAND catch_discover_tests)
+    catch_discover_tests(test_axiomatic_send_wire_format)
+  else()
+    add_test(NAME test_axiomatic_send_wire_format COMMAND test_axiomatic_send_wire_format)
+  endif()
+
+  add_executable(test_axiomatic_concurrent_io
+    test/axiomatic_concurrent_io_test.cpp
+    src/axiomatic_adapter.cpp
+    src/axiomatic_frame_parser.cpp
+  )
+  target_include_directories(test_axiomatic_concurrent_io PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_axiomatic_concurrent_io PRIVATE
+    socketcan_adapter::socketcan_adapter
+    Boost::system
+    Catch2::Catch2WithMain
+  )
+  if(COMMAND catch_discover_tests)
+    catch_discover_tests(test_axiomatic_concurrent_io)
+  else()
+    add_test(NAME test_axiomatic_concurrent_io COMMAND test_axiomatic_concurrent_io)
+  endif()
 
   if(HARDWARE_CONNECTED)
     add_executable(test_axiomatic_adapter test/axiomatic_adapter_test.cpp)

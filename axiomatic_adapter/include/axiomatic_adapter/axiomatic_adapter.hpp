@@ -48,13 +48,16 @@ public:
   /// @brief Mapped to std lib, but should be remapped to Polymath Safety compatible versions
   using socket_error_string_t = std::string;
 
-  static constexpr std::chrono::milliseconds DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS{100};
+  static constexpr std::chrono::milliseconds DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS{20};
   static constexpr std::chrono::milliseconds JOIN_RECEPTION_TIMEOUT_MS{100};
 
   /// @brief AxiomaticAdapter Class Init
   /// @param ip_address Axiomatic Device IP address to connect
   /// @param port Axiomatic Device Port to connect to
   /// @param receive_timeout_ms receive timeout in milliseconds
+  /// @param verbose when true the parser prints a line to std::cout for each
+  ///        non-CAN protocol message it sees (heartbeat, status, FD skip,
+  ///        unknown, notification). Off by default.
   AxiomaticAdapter(
     const std::string & ip_address,
     const std::string & port,
@@ -62,7 +65,8 @@ public:
       [](std::unique_ptr<const polymath::socketcan::CanFrame> /*frame*/) { /*do nothing*/ },
     const std::function<void(socket_error_string_t error)> && error_callback_function =
       [](socket_error_string_t /*error*/) { /*do nothing*/ },
-    const std::chrono::milliseconds & receive_timeout_ms = AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS);
+    const std::chrono::milliseconds & receive_timeout_ms = AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS,
+    bool verbose = false);
 
   /// @brief Destructor for AxiomaticAdapter
   virtual ~AxiomaticAdapter();

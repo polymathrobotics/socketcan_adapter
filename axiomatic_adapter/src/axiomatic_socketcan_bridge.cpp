@@ -25,7 +25,12 @@ namespace can
 AxiomaticSocketcanBridge::AxiomaticSocketcanBridge(
   const std::string & can_interface_name, const std::string & ip, const std::string & port, bool verbose)
 : socketcan_adapter_(can_interface_name)
-, axiomatic_adapter_(ip, port, std::bind(&AxiomaticSocketcanBridge::ethcanReceiveCallback, this, std::placeholders::_1))
+, axiomatic_adapter_(
+    ip, port,
+    std::bind(&AxiomaticSocketcanBridge::ethcanReceiveCallback, this, std::placeholders::_1),
+    [](polymath::can::AxiomaticAdapter::socket_error_string_t /*error*/) { /* no-op */ },
+    polymath::can::AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS,
+    verbose)
 , verbose_(verbose)
 {
   socketcan_adapter_.setOnReceiveCallback(

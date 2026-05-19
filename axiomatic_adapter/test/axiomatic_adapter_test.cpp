@@ -32,8 +32,6 @@ using polymath::socketcan::CanFrame;
 
 // NOTE: These tests were written to run on hq0-robot04 with the in office CAN setup
 // NOTE: these tests leverage the socketcan adapter to act as a "secondary device" transmitting messages
-// NOTE: the first run may fail. This is due to an issue with the Axiomatic adapter that causes just the first message
-//       read to fail.
 TEST_CASE("AxiomaticAdapter tests", "[AxiomaticAdapter]")
 {
   SECTION("Constructor and destructor")
