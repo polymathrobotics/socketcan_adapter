@@ -114,6 +114,19 @@ public:
         return false;
       }
 
+      // Disable Nagle's algorithm. With the async send worker, the calling
+      // thread is never blocked on write() latency, and we'd rather have small
+      // frequent TCP segments than bursty coalescing — the device's delayed-ACK
+      // behaviour otherwise produces tens-to-hundreds of milliseconds of
+      // segment stalls under sustained CAN traffic. Failure is non-fatal.
+      {
+        boost::system::error_code nd_ec;
+        tcp_socket_.set_option(boost::asio::ip::tcp::no_delay(true), nd_ec);
+        if (nd_ec) {
+          std::cerr << "[Axiomatic] Failed to set TCP_NODELAY: " << nd_ec.message() << std::endl;
+        }
+      }
+
       socket_state_ = TCPSocketState::OPEN;
       startSendWorker();
       return true;
