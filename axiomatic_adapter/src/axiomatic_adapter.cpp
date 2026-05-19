@@ -112,6 +112,20 @@ public:
         return false;
       }
 
+      // Disable Nagle's algorithm. The Axiomatic device's TCP stack uses delayed
+      // ACKs, which interacts with Nagle to produce 30-450 ms bursts of segments
+      // under sustained CAN traffic (observed: avg 33 ms / max 448 ms inter-segment
+      // gaps at 940 Hz). TCP_NODELAY forces every write to go on the wire
+      // immediately, which is what we want for streaming small CAN frames where
+      // latency matters more than per-segment overhead. Failure is non-fatal.
+      {
+        boost::system::error_code nd_ec;
+        tcp_socket_.set_option(boost::asio::ip::tcp::no_delay(true), nd_ec);
+        if (nd_ec) {
+          std::cerr << "[Axiomatic] Failed to set TCP_NODELAY: " << nd_ec.message() << std::endl;
+        }
+      }
+
       socket_state_ = TCPSocketState::OPEN;
       return true;
     } catch (std::exception & e) {
