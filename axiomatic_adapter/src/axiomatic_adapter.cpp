@@ -19,6 +19,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <future>
 #include <iostream>
 #include <mutex>
@@ -113,6 +115,7 @@ public:
       }
 
       socket_state_ = TCPSocketState::OPEN;
+      startSendWorker();
       return true;
     } catch (std::exception & e) {
       std::cerr << "Connection failed (exception): " << e.what() << std::endl;
@@ -124,6 +127,8 @@ public:
   bool closeSocket()
   {
     if (socket_state_ != TCPSocketState::CLOSED) {
+      stopSendWorker();
+
       boost::system::error_code error_code;
       tcp_socket_.close(error_code);
 
@@ -353,12 +358,11 @@ public:
     // insert the can frame data
     full_message.insert(full_message.end(), frame_data.begin(), frame_data.end());
 
-    try {
-      boost::asio::write(tcp_socket_, boost::asio::buffer(full_message.data(), full_message.size()));
-    } catch (const std::exception & e) {
-      return std::optional<AxiomaticAdapter::socket_error_string_t>(std::string("TCP Send Failed: ") + e.what());
-    }
-    return std::nullopt;
+    // Hand off to the send worker. Returns immediately so the calling thread —
+    // typically the SocketCAN reception callback — is never blocked on a slow
+    // or back-pressured TCP write. Actual write errors are reported through
+    // error_callback_ from the worker thread.
+    return enqueueSend(std::move(full_message));
   }
 
   TCPSocketState get_socket_state()
@@ -369,6 +373,94 @@ public:
   bool is_thread_running()
   {
     return thread_running_;
+  }
+
+  /// @brief Number of outbound messages dropped because the send queue was full.
+  /// Reset to zero when the send worker starts.
+  uint64_t get_send_queue_drops()
+  {
+    return send_queue_drops_.load();
+  }
+
+private:
+  // ------ Async send worker --------------------------------------------------
+  //
+  // send() copies the prebuilt protocol message bytes onto a bounded queue and
+  // returns immediately. A dedicated worker thread pops messages off the queue
+  // and does the actual blocking boost::asio::write() against the socket.
+  //
+  // This decouples the SocketCAN reception callback (which calls send()) from
+  // TCP back-pressure — under load the calling thread no longer waits on the
+  // kernel send buffer, so frames don't pile up in the SocketCAN kernel queue
+  // and get silently dropped. The cost is bounded user-space memory for the
+  // outbound queue and best-effort delivery semantics: actual write errors
+  // surface via error_callback_, not via send()'s return value.
+
+  std::optional<AxiomaticAdapter::socket_error_string_t> enqueueSend(std::vector<uint8_t> bytes)
+  {
+    if (socket_state_ != TCPSocketState::OPEN) {
+      return std::make_optional<AxiomaticAdapter::socket_error_string_t>(
+        "axiomatic: send called while socket not open");
+    }
+    {
+      std::lock_guard<std::mutex> lock(send_queue_mutex_);
+      if (send_queue_.size() >= SEND_QUEUE_MAX) {
+        // Drop the oldest queued frame. Matches the kernel SocketCAN buffer's
+        // overflow semantics in spirit — under sustained back-pressure we keep
+        // the freshest data and shed the stalest.
+        send_queue_.pop_front();
+        send_queue_drops_.fetch_add(1, std::memory_order_relaxed);
+      }
+      send_queue_.push_back(std::move(bytes));
+    }
+    send_queue_cv_.notify_one();
+    return std::nullopt;
+  }
+
+  void startSendWorker()
+  {
+    send_worker_stop_.store(false);
+    send_queue_drops_.store(0);
+    send_worker_thread_ = std::thread([this]() { sendWorkerLoop(); });
+  }
+
+  void stopSendWorker()
+  {
+    {
+      std::lock_guard<std::mutex> lock(send_queue_mutex_);
+      send_worker_stop_.store(true);
+    }
+    send_queue_cv_.notify_all();
+    if (send_worker_thread_.joinable()) {
+      send_worker_thread_.join();
+    }
+    // Drop anything that didn't make it onto the wire so a future openSocket()
+    // doesn't replay stale frames.
+    std::lock_guard<std::mutex> lock(send_queue_mutex_);
+    send_queue_.clear();
+  }
+
+  void sendWorkerLoop()
+  {
+    while (true) {
+      std::vector<uint8_t> message;
+      {
+        std::unique_lock<std::mutex> lock(send_queue_mutex_);
+        send_queue_cv_.wait(lock, [this]() { return send_worker_stop_.load() || !send_queue_.empty(); });
+        if (send_worker_stop_.load() && send_queue_.empty()) {
+          return;
+        }
+        message = std::move(send_queue_.front());
+        send_queue_.pop_front();
+      }
+      try {
+        boost::asio::write(tcp_socket_, boost::asio::buffer(message.data(), message.size()));
+      } catch (const std::exception & e) {
+        if (error_callback_) {
+          error_callback_(std::string("TCP Send Failed: ") + e.what());
+        }
+      }
+    }
   }
 
 private:
@@ -403,6 +495,15 @@ private:
   std::thread tcp_receive_thread_;
   std::atomic<bool> thread_running_;
   std::atomic<bool> stop_thread_requested_;
+
+  // Async send worker state.
+  static constexpr size_t SEND_QUEUE_MAX = 1024;
+  std::mutex send_queue_mutex_;
+  std::condition_variable send_queue_cv_;
+  std::deque<std::vector<uint8_t>> send_queue_;
+  std::thread send_worker_thread_;
+  std::atomic<bool> send_worker_stop_{false};
+  std::atomic<uint64_t> send_queue_drops_{0};
 
   // from construction
   std::string ip_address_;
