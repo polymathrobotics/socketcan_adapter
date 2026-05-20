@@ -301,21 +301,54 @@ public:
     can_frame.set_len(can_length);
     can_frame.set_data(can_data);
 
-    // Continue walking the rest of this CAN Stream message body. The Axiomatic
-    // device legally packs multiple CAN frames into one protocol message when
-    // bus traffic arrives in quick bursts — typical for UDS-style request /
-    // response patterns where several ECUs reply within a few ms. Any frames
-    // past the first must be queued so subsequent receive() calls deliver them
-    // before the next TCP read, otherwise they're silently dropped.
-    //
-    // The message body length is at header bytes 9-10 (declared Message Data
-    // Length). Each CAN/Notification Frame is variable-sized per its Control
-    // Byte: CB(1) + TS(0/1/2/4) + ID(2 or 4) + DLC bytes for CAN frames;
-    // fixed 5 bytes total for Notification frames (control bit 7 = 1).
-    static constexpr size_t TS_LENGTH_TABLE[4] = {0, 1, 2, 4};
+    // Walk the rest of this CAN Stream message body for packed CAN frames.
+    // The Axiomatic device legally packs multiple CAN frames into one protocol
+    // message when bus traffic arrives in quick bursts — typical for UDS-style
+    // request / response patterns where several ECUs reply within a few ms.
     const size_t declared_data_len = static_cast<size_t>(data[9]) | (static_cast<size_t>(data[10]) << 8);
-    const size_t body_end = std::min<size_t>(11 + declared_data_len, data.size());
-    size_t walker = can_data_start + can_length;
+    const size_t first_msg_body_end = std::min<size_t>(11 + declared_data_len, data.size());
+    decodePackedCanFramesInto(data, can_data_start + can_length, first_msg_body_end);
+
+    // Walk forward through any additional Axiomatic protocol messages that
+    // arrived in the same TCP read. Even with TCP_NODELAY on, the kernel
+    // receive buffer can hold multiple complete protocol messages by the time
+    // async_receive() fires — common at higher CAN bus rates. For each
+    // CAN Stream message we find, decode all its CAN frames; non-CAN-Stream
+    // messages (heartbeats, status responses, CAN FD stream, unknown IDs) are
+    // skipped using their declared Message Data Length. We compare the first
+    // 6 bytes of the header constant ("AXIO" + 0xBA 0x36) so the sync check
+    // doesn't require Message ID = 1 like the position-0 validation above.
+    size_t scan_pos = 11 + declared_data_len;
+    while (scan_pos + 11 <= data.size()) {
+      if (!std::equal(
+            AXIOMATIC_CAN_MESSAGE_HEADER.begin(), AXIOMATIC_CAN_MESSAGE_HEADER.begin() + 6, data.begin() + scan_pos))
+      {
+        // Garbage or padding bytes — give up rather than misframe.
+        break;
+      }
+      const uint16_t next_msg_id =
+        static_cast<uint16_t>(data[scan_pos + 6]) | (static_cast<uint16_t>(data[scan_pos + 7]) << 8);
+      const size_t next_decl_len =
+        static_cast<size_t>(data[scan_pos + 9]) | (static_cast<size_t>(data[scan_pos + 10]) << 8);
+      const size_t next_body_end = std::min<size_t>(scan_pos + 11 + next_decl_len, data.size());
+      if (next_msg_id == 1) {
+        decodePackedCanFramesInto(data, scan_pos + 11, next_body_end);
+      }
+      // Else: heartbeat / status response / CAN FD stream / unknown — skip silently.
+      scan_pos += 11 + next_decl_len;
+    }
+
+    return std::nullopt;
+  }
+
+  // Walks the body of a single CAN Stream message and pushes every CAN frame
+  // it finds onto pending_frames_. Each CAN/Notification Frame is variable-
+  // sized per its Control Byte: CB(1) + TS(0/1/2/4) + ID(2 or 4) + DLC for CAN
+  // frames; fixed 5 bytes for Notification frames (control bit 7 = 1).
+  void decodePackedCanFramesInto(const std::vector<uint8_t> & data, size_t body_start, size_t body_end)
+  {
+    static constexpr size_t TS_LENGTH_TABLE[4] = {0, 1, 2, 4};
+    size_t walker = body_start;
     while (walker + 1 <= body_end) {
       const uint8_t cb = data[walker];
       if ((cb & 0x80) != 0) {
@@ -329,7 +362,7 @@ public:
       const size_t dlc = cb & 0x0F;
       const size_t frame_bytes = 1 + ts_size + id_size + dlc;
       if (walker + frame_bytes > body_end) {
-        // Truncated final frame in this read — abandon rather than misdecode.
+        // Truncated final frame — abandon rather than misdecode.
         break;
       }
       const size_t id_offset = walker + 1 + ts_size;
@@ -350,8 +383,6 @@ public:
       pending_frames_.push_back(extra);
       walker += frame_bytes;
     }
-
-    return std::nullopt;
   }
 
   std::optional<const polymath::socketcan::CanFrame> receive()
