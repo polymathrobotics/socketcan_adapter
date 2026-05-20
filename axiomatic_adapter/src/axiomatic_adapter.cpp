@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <deque>
 #include <future>
 #include <iostream>
 #include <mutex>
@@ -196,6 +197,15 @@ public:
 
   std::optional<AxiomaticAdapter::socket_error_string_t> receive(polymath::socketcan::CanFrame & can_frame)
   {
+    // A previous TCP read may have decoded several CAN frames out of a single
+    // packed CAN Stream message — deliver those one at a time before doing
+    // another network read, so packed frames don't get silently dropped.
+    if (!pending_frames_.empty()) {
+      can_frame = pending_frames_.front();
+      pending_frames_.pop_front();
+      return std::nullopt;
+    }
+
     std::vector<uint8_t> data(1024, 0);
     std::atomic<bool> data_received(false);
     boost::system::error_code error_code;
@@ -291,6 +301,56 @@ public:
     can_frame.set_len(can_length);
     can_frame.set_data(can_data);
 
+    // Continue walking the rest of this CAN Stream message body. The Axiomatic
+    // device legally packs multiple CAN frames into one protocol message when
+    // bus traffic arrives in quick bursts — typical for UDS-style request /
+    // response patterns where several ECUs reply within a few ms. Any frames
+    // past the first must be queued so subsequent receive() calls deliver them
+    // before the next TCP read, otherwise they're silently dropped.
+    //
+    // The message body length is at header bytes 9-10 (declared Message Data
+    // Length). Each CAN/Notification Frame is variable-sized per its Control
+    // Byte: CB(1) + TS(0/1/2/4) + ID(2 or 4) + DLC bytes for CAN frames;
+    // fixed 5 bytes total for Notification frames (control bit 7 = 1).
+    static constexpr size_t TS_LENGTH_TABLE[4] = {0, 1, 2, 4};
+    const size_t declared_data_len = static_cast<size_t>(data[9]) | (static_cast<size_t>(data[10]) << 8);
+    const size_t body_end = std::min<size_t>(11 + declared_data_len, data.size());
+    size_t walker = can_data_start + can_length;
+    while (walker + 1 <= body_end) {
+      const uint8_t cb = data[walker];
+      if ((cb & 0x80) != 0) {
+        // Notification Frame — fixed 5-byte format, no CAN payload to deliver.
+        walker += 5;
+        continue;
+      }
+      const size_t ts_size = TS_LENGTH_TABLE[(cb >> 5) & 0b11];
+      const bool ext_id = ((cb >> 4) & 0x01) != 0;
+      const size_t id_size = ext_id ? 4 : 2;
+      const size_t dlc = cb & 0x0F;
+      const size_t frame_bytes = 1 + ts_size + id_size + dlc;
+      if (walker + frame_bytes > body_end) {
+        // Truncated final frame in this read — abandon rather than misdecode.
+        break;
+      }
+      const size_t id_offset = walker + 1 + ts_size;
+      uint32_t cid = 0;
+      for (size_t i = 0; i < id_size; ++i) {
+        cid |= static_cast<uint32_t>(data[id_offset + i]) << (8 * i);
+      }
+      std::array<uint8_t, 8> dbytes = {0};
+      std::copy_n(data.begin() + id_offset + id_size, dlc, dbytes.begin());
+
+      polymath::socketcan::CanFrame extra;
+      extra.set_can_id(cid);
+      extra.set_len(static_cast<unsigned char>(dlc));
+      extra.set_data(dbytes);
+      if (ext_id) {
+        extra.set_id_as_extended();
+      }
+      pending_frames_.push_back(extra);
+      walker += frame_bytes;
+    }
+
     return std::nullopt;
   }
 
@@ -377,6 +437,10 @@ private:
   std::thread tcp_receive_thread_;
   std::atomic<bool> thread_running_;
   std::atomic<bool> stop_thread_requested_;
+
+  // CAN frames decoded from a packed CAN Stream message but not yet delivered
+  // through receive(). Drained one at a time, ahead of the next TCP read.
+  std::deque<polymath::socketcan::CanFrame> pending_frames_;
 
   // from construction
   std::string ip_address_;
