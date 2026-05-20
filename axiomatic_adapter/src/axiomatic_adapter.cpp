@@ -201,7 +201,7 @@ public:
       return std::nullopt;
     }
 
-    std::vector<uint8_t> data(1024, 0);
+    std::vector<uint8_t> data(RECEIVE_BUFFER_SIZE, 0);
     std::atomic<bool> data_received(false);
     boost::system::error_code error_code;
 
@@ -245,9 +245,18 @@ public:
 
     // Check size, header info and message type
     if (data.size() < AXIOMATIC_CAN_MESSAGE_HEADER.size() + 5) {
+      std::cerr << "[Axiomatic parser] DROP: received " << data.size()
+                << " bytes, too short to contain a complete protocol header" << std::endl;
       return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Data too short for header and control byte.");
     }
     if (!std::equal(AXIOMATIC_CAN_MESSAGE_HEADER.begin(), AXIOMATIC_CAN_MESSAGE_HEADER.end(), data.begin())) {
+      std::cerr << "[Axiomatic parser] DROP: position-0 header mismatch in " << data.size()
+                << "-byte TCP read; first 11 bytes: " << std::hex;
+      for (size_t i = 0; i < std::min<size_t>(11, data.size()); ++i) {
+        std::cerr << ' ' << static_cast<int>(data[i]);
+      }
+      std::cerr << std::dec << " (likely a non-CAN-Stream message at position 0 — heartbeat, status, etc."
+                << " — entire TCP read dropped including any trailing CAN frames)" << std::endl;
       return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Not a valid CAN message.");
     }
 
@@ -265,6 +274,8 @@ public:
     // Ensure data is large enough for CAN ID extraction
     size_t min_id_size = is_can_extended ? 4 : 2;
     if (data.size() < can_id_start + min_id_size) {
+      std::cerr << "[Axiomatic parser] DROP: TCP read truncated before CAN ID (need " << (can_id_start + min_id_size)
+                << " bytes, have " << data.size() << ")" << std::endl;
       return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Data too short for CAN ID.");
     }
 
@@ -282,6 +293,9 @@ public:
 
     // Ensure data is large enough for CAN payload
     if (data.size() < can_data_start + can_length) {
+      std::cerr << "[Axiomatic parser] DROP: TCP read truncated before CAN payload (need "
+                << (can_data_start + can_length) << " bytes for " << can_length << "-byte payload, have " << data.size()
+                << ")" << std::endl;
       return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Data too short for CAN payload.");
     }
 
@@ -307,6 +321,13 @@ public:
       if (!std::equal(
             AXIOMATIC_CAN_MESSAGE_HEADER.begin(), AXIOMATIC_CAN_MESSAGE_HEADER.begin() + 6, data.begin() + scan_pos))
       {
+        std::cerr << "[Axiomatic parser] DROP: sync prefix mismatch at offset " << scan_pos << " of " << data.size()
+                  << "-byte TCP read; first 6 bytes there: " << std::hex;
+        for (size_t i = 0; i < 6 && scan_pos + i < data.size(); ++i) {
+          std::cerr << ' ' << static_cast<int>(data[scan_pos + i]);
+        }
+        std::cerr << std::dec << " (stopping scan; remaining " << (data.size() - scan_pos)
+                  << " bytes ignored — possible truncated message or partial TCP read)" << std::endl;
         break;
       }
       const uint16_t next_msg_id =
@@ -316,9 +337,11 @@ public:
       const size_t next_body_end = std::min<size_t>(scan_pos + 11 + next_decl_len, data.size());
       if (next_msg_id == 1) {
         decodePackedCanFramesInto(data, scan_pos + 11, next_body_end);
+      } else {
+        std::cerr << "[Axiomatic parser] SKIP: non-CAN-Stream message (Message ID " << next_msg_id << ", "
+                  << next_decl_len << "-byte body) at offset " << scan_pos
+                  << " — heartbeat/status/FD/unknown; not delivered to caller" << std::endl;
       }
-      // continue on any unhandled frame: heartbeat / status response / CAN FD stream / unknown
-      // todo(david): find any unhandled status, heartbeat messages and take care of them
       scan_pos += 11 + next_decl_len;
     }
 
@@ -332,6 +355,8 @@ public:
     while (walker + 1 <= body_end) {
       const uint8_t cb = data[walker];
       if ((cb & CONTROL_BYTE_NOTIFICATION_FRAME_FLAG) != 0) {
+        std::cerr << "[Axiomatic parser] SKIP: notification frame (CB=0x" << std::hex << static_cast<int>(cb)
+                  << std::dec << ") at offset " << walker << " — not delivered to caller" << std::endl;
         walker += NOTIFICATION_FRAME_TOTAL_BYTES;
         continue;
       }
@@ -343,6 +368,9 @@ public:
       const size_t frame_bytes = 1 + ts_size + id_size + dlc;
       if (walker + frame_bytes > body_end) {
         // truncated final frame — abandon rather than misdecode.
+        std::cerr << "[Axiomatic parser] DROP: truncated CAN frame at offset " << walker << " (CB=0x" << std::hex
+                  << static_cast<int>(cb) << std::dec << " declares " << frame_bytes << " bytes but only "
+                  << (body_end - walker) << " bytes remain in message body) — frame and remainder dropped" << std::endl;
         break;
       }
       const size_t id_offset = walker + 1 + ts_size;
@@ -433,6 +461,14 @@ public:
 private:
   static constexpr std::array<uint8_t, 7> AXIOMATIC_CAN_MESSAGE_HEADER = {'A', 'X', 'I', 'O', 0xBA, 0x36, 0x01};
   static constexpr std::chrono::milliseconds TCP_IP_CONNECTION_TIMEOUT_MS{3000};
+
+  // Receive buffer size for each async_receive call. Larger than the
+  // protocol's per-message cap (256 bytes) by a wide margin so that bursts
+  // of protocol messages coalesced by the kernel into a single TCP read fit
+  // comfortably without truncating any message mid-body. 64 KiB is below
+  // the typical Linux TCP receive-buffer default (~85 KiB), so we drain
+  // everything the kernel had buffered in a single call.
+  static constexpr size_t RECEIVE_BUFFER_SIZE = 65536;
 
   // Control Byte (CB) field layout — first byte of every CAN/Notification
   // Frame inside a CAN Stream message body. Per Axiomatic Communication
