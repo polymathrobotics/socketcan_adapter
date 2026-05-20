@@ -112,13 +112,8 @@ public:
         socket_state_ = TCPSocketState::ERROR;
         return false;
       }
-
-      // Disable Nagle's algorithm. The Axiomatic device's TCP stack uses delayed
-      // ACKs, which interacts with Nagle to produce 30-450 ms bursts of segments
-      // under sustained CAN traffic (observed: avg 33 ms / max 448 ms inter-segment
-      // gaps at 940 Hz). TCP_NODELAY forces every write to go on the wire
-      // immediately, which is what we want for streaming small CAN frames where
-      // latency matters more than per-segment overhead. Failure is non-fatal.
+      // Disable Nagle's algorithm. This removes batching TCP packets for low latency comms and
+      // keeps one CAN frame per TCP message
       {
         boost::system::error_code nd_ec;
         tcp_socket_.set_option(boost::asio::ip::tcp::no_delay(true), nd_ec);
@@ -257,12 +252,10 @@ public:
     }
 
     uint8_t control_byte = data[11];
-    // Extract timestamp size (bits 6 & 5)
-    size_t timestamp_size = (control_byte & 0x60) >> 5;
-    // Check if the frame is extended (bit 4)
-    bool is_can_extended = (control_byte & 0x10) >> 4;
-    // Extract CAN frame length (lower 4 bits)
-    size_t can_length = control_byte & 0x0F;
+    const uint8_t ts_bits = (control_byte & CONTROL_BYTE_TIMESTAMP_LENGTH_MASK) >> CONTROL_BYTE_TIMESTAMP_LENGTH_SHIFT;
+    size_t timestamp_size = TIMESTAMP_LENGTH_BYTES_TABLE[ts_bits];
+    bool is_can_extended = (control_byte & CONTROL_BYTE_EXTENDED_ID_FLAG) != 0;
+    size_t can_length = control_byte & CONTROL_BYTE_CAN_DATA_LENGTH_MASK;
 
     // Determine where the CAN ID starts (after timestamp bytes)
     size_t can_id_start = 12 + timestamp_size;
@@ -301,29 +294,19 @@ public:
     can_frame.set_len(can_length);
     can_frame.set_data(can_data);
 
-    // Walk the rest of this CAN Stream message body for packed CAN frames.
-    // The Axiomatic device legally packs multiple CAN frames into one protocol
-    // message when bus traffic arrives in quick bursts — typical for UDS-style
-    // request / response patterns where several ECUs reply within a few ms.
+    // walk the rest of this CAN Stream message body for packed CAN frames -- one protocol message can have >1 CAN Frame
+    // The Axiomatic device packs multiple CAN frames into one protocol message
     const size_t declared_data_len = static_cast<size_t>(data[9]) | (static_cast<size_t>(data[10]) << 8);
     const size_t first_msg_body_end = std::min<size_t>(11 + declared_data_len, data.size());
     decodePackedCanFramesInto(data, can_data_start + can_length, first_msg_body_end);
 
-    // Walk forward through any additional Axiomatic protocol messages that
-    // arrived in the same TCP read. Even with TCP_NODELAY on, the kernel
-    // receive buffer can hold multiple complete protocol messages by the time
-    // async_receive() fires — common at higher CAN bus rates. For each
-    // CAN Stream message we find, decode all its CAN frames; non-CAN-Stream
-    // messages (heartbeats, status responses, CAN FD stream, unknown IDs) are
-    // skipped using their declared Message Data Length. We compare the first
-    // 6 bytes of the header constant ("AXIO" + 0xBA 0x36) so the sync check
-    // doesn't require Message ID = 1 like the position-0 validation above.
+    // walk forward through any additional Axiomatic protocol messages that arrived in the same TCP buffer
     size_t scan_pos = 11 + declared_data_len;
     while (scan_pos + 11 <= data.size()) {
+      // check for garbage -- non-axiomatic header
       if (!std::equal(
             AXIOMATIC_CAN_MESSAGE_HEADER.begin(), AXIOMATIC_CAN_MESSAGE_HEADER.begin() + 6, data.begin() + scan_pos))
       {
-        // Garbage or padding bytes — give up rather than misframe.
         break;
       }
       const uint16_t next_msg_id =
@@ -334,35 +317,32 @@ public:
       if (next_msg_id == 1) {
         decodePackedCanFramesInto(data, scan_pos + 11, next_body_end);
       }
-      // Else: heartbeat / status response / CAN FD stream / unknown — skip silently.
+      // continue on any unhandled frame: heartbeat / status response / CAN FD stream / unknown
+      // todo(david): find any unhandled status, heartbeat messages and take care of them
       scan_pos += 11 + next_decl_len;
     }
 
     return std::nullopt;
   }
 
-  // Walks the body of a single CAN Stream message and pushes every CAN frame
-  // it finds onto pending_frames_. Each CAN/Notification Frame is variable-
-  // sized per its Control Byte: CB(1) + TS(0/1/2/4) + ID(2 or 4) + DLC for CAN
-  // frames; fixed 5 bytes for Notification frames (control bit 7 = 1).
+  // walks the body of a single CAN Stream message and pushes every CAN frame onto pending_frames_
   void decodePackedCanFramesInto(const std::vector<uint8_t> & data, size_t body_start, size_t body_end)
   {
-    static constexpr size_t TS_LENGTH_TABLE[4] = {0, 1, 2, 4};
     size_t walker = body_start;
     while (walker + 1 <= body_end) {
       const uint8_t cb = data[walker];
-      if ((cb & 0x80) != 0) {
-        // Notification Frame — fixed 5-byte format, no CAN payload to deliver.
-        walker += 5;
+      if ((cb & CONTROL_BYTE_NOTIFICATION_FRAME_FLAG) != 0) {
+        walker += NOTIFICATION_FRAME_TOTAL_BYTES;
         continue;
       }
-      const size_t ts_size = TS_LENGTH_TABLE[(cb >> 5) & 0b11];
-      const bool ext_id = ((cb >> 4) & 0x01) != 0;
+      const size_t ts_size =
+        TIMESTAMP_LENGTH_BYTES_TABLE[(cb & CONTROL_BYTE_TIMESTAMP_LENGTH_MASK) >> CONTROL_BYTE_TIMESTAMP_LENGTH_SHIFT];
+      const bool ext_id = (cb & CONTROL_BYTE_EXTENDED_ID_FLAG) != 0;
       const size_t id_size = ext_id ? 4 : 2;
-      const size_t dlc = cb & 0x0F;
+      const size_t dlc = cb & CONTROL_BYTE_CAN_DATA_LENGTH_MASK;
       const size_t frame_bytes = 1 + ts_size + id_size + dlc;
       if (walker + frame_bytes > body_end) {
-        // Truncated final frame — abandon rather than misdecode.
+        // truncated final frame — abandon rather than misdecode.
         break;
       }
       const size_t id_offset = walker + 1 + ts_size;
@@ -409,9 +389,9 @@ public:
     }
 
     size_t message_length = frame_data_length + control_timestamp_byte_length + frame_id_byte_length;
-    unsigned char control_byte = (1 << 6);
-    control_byte |= (is_extended ? (1 << 4) : 0);
-    control_byte |= (frame_data_length & 0x0F);
+    unsigned char control_byte = CONTROL_BYTE_TIMESTAMP_2_BYTE_VALUE;
+    control_byte |= (is_extended ? CONTROL_BYTE_EXTENDED_ID_FLAG : 0);
+    control_byte |= (frame_data_length & CONTROL_BYTE_CAN_DATA_LENGTH_MASK);
 
     // initialize the full message with the header, control bytes, timestamp bytes
     std::vector<uint8_t> full_message;
@@ -453,6 +433,34 @@ public:
 private:
   static constexpr std::array<uint8_t, 7> AXIOMATIC_CAN_MESSAGE_HEADER = {'A', 'X', 'I', 'O', 0xBA, 0x36, 0x01};
   static constexpr std::chrono::milliseconds TCP_IP_CONNECTION_TIMEOUT_MS{3000};
+
+  // Control Byte (CB) field layout — first byte of every CAN/Notification
+  // Frame inside a CAN Stream message body. Per Axiomatic Communication
+  // Protocol spec v6, Section "Control Byte":
+  //   bit  7   : C_Bit    — 0 = CAN Frame, 1 = Notification Frame
+  //   bits 6:5 : TS_Bit   — Time Stamp length code (see TIMESTAMP_LENGTH_BYTES_TABLE)
+  //   bit  4   : EID_Bit  — 0 = standard 11-bit ID, 1 = extended 29-bit ID
+  //   bits 3:0 : L_Bit    — CAN Data Length (DLC), 0..8 valid
+  static constexpr uint8_t CONTROL_BYTE_NOTIFICATION_FRAME_FLAG = 0x80;
+  static constexpr uint8_t CONTROL_BYTE_TIMESTAMP_LENGTH_MASK = 0x60;
+  static constexpr int CONTROL_BYTE_TIMESTAMP_LENGTH_SHIFT = 5;
+  static constexpr uint8_t CONTROL_BYTE_EXTENDED_ID_FLAG = 0x10;
+  static constexpr uint8_t CONTROL_BYTE_CAN_DATA_LENGTH_MASK = 0x0F;
+
+  // TS_Bit code → number of timestamp bytes that follow CB. Per Table 4 in
+  // the spec: 00→0 bytes, 01→1, 10→2, 11→4. Note this mapping is non-linear
+  // at index 3 (which is why a lookup table is needed instead of using the
+  // raw 2-bit value as the byte count directly).
+  static constexpr size_t TIMESTAMP_LENGTH_BYTES_TABLE[4] = {0, 1, 2, 4};
+
+  // TS_Bit code that send() writes into the Control Byte. We always include
+  // a 2-byte timestamp slot on outbound; firmware tolerates whatever bytes
+  // are there (spec says outbound TS is ignored by the converter).
+  static constexpr uint8_t CONTROL_BYTE_TIMESTAMP_2_BYTE_VALUE = static_cast<uint8_t>(2)
+                                                                 << CONTROL_BYTE_TIMESTAMP_LENGTH_SHIFT;
+
+  // Notification Frame fixed size: 1-byte NIDB + 4-byte NDB1..NDB4.
+  static constexpr size_t NOTIFICATION_FRAME_TOTAL_BYTES = 5;
 
   /// @brief Socket connection state as a struct for the mutex during TCP Open Socket to update the variables together
   struct TCPSocketConnectionState
