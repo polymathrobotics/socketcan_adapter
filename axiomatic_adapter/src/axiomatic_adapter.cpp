@@ -194,7 +194,7 @@ public:
   {
     // A previous TCP read may have decoded several CAN frames out of a single
     // packed CAN Stream message — deliver those one at a time before doing
-    // another network read, so packed frames don't get silently dropped.
+    // another network read, so packed frames don't get silently dropped
     if (!pending_frames_.empty()) {
       can_frame = pending_frames_.front();
       pending_frames_.pop_front();
@@ -242,26 +242,8 @@ public:
     }
 
     // --- Process the received data ---
-    //
-    // Walk the buffer starting at position 0, dispatching every Axiomatic
-    // protocol message we find by its Message ID:
-    //   - CAN Stream (ID 1): extract every CAN frame from its body into
-    //     pending_frames_. This handles both frames packed inside one message
-    //     and multiple CAN Stream messages coalesced into one TCP read.
-    //   - Heartbeat / Status Response / CAN FD Stream / unknown ID: skip past
-    //     the message using its declared Message Data Length. The frames are
-    //     not surfaced to the caller, but trailing CAN frames in the same
-    //     read are still recovered.
-    //
-    // We compare only the first 6 bytes of the header constant ("AXIO" +
-    // 0xBA 0x36) so the sync match doesn't require Message ID = 1 like the
-    // previous strict 7-byte check did. That earlier behavior would reject
-    // an entire TCP read whose first protocol message happened to be a
-    // heartbeat — including any CAN frames that followed it in the same
-    // buffer. Loss of those trailing CAN frames was the most likely cause
-    // of single-frame drops during UDS flashes (heartbeats land at the
-    // front of a TCP read once per second on average, and a flash takes
-    // long enough to make a coincidence with a critical response likely).
+
+    // walk the buffer starting at position 0, dispatching every Axiomatic protocol message we find by its Message ID
     if (data.size() < 11) {
       std::cerr << "[Axiomatic parser] DROP: received " << data.size()
                 << " bytes, too short to contain a complete protocol header" << std::endl;
@@ -297,9 +279,6 @@ public:
     }
 
     if (pending_frames_.empty()) {
-      // Either the buffer started with non-Axiomatic bytes (scan_pos still 0),
-      // or it contained only non-CAN-Stream protocol traffic (heartbeats etc.).
-      // Neither case is a real error; the default error_callback_ swallows it.
       if (scan_pos == 0) {
         return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Not a valid Axiomatic message.");
       }
@@ -428,9 +407,7 @@ private:
   // Receive buffer size for each async_receive call. Larger than the
   // protocol's per-message cap (256 bytes) by a wide margin so that bursts
   // of protocol messages coalesced by the kernel into a single TCP read fit
-  // comfortably without truncating any message mid-body. 64 KiB is below
-  // the typical Linux TCP receive-buffer default (~85 KiB), so we drain
-  // everything the kernel had buffered in a single call.
+  // comfortably without truncating any message mid-body
   static constexpr size_t RECEIVE_BUFFER_SIZE = 65536;
 
   // Control Byte (CB) field layout — first byte of every CAN/Notification
