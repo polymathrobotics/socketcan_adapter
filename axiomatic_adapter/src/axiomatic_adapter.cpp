@@ -242,82 +242,34 @@ public:
     }
 
     // --- Process the received data ---
-
-    // Check size, header info and message type
-    if (data.size() < AXIOMATIC_CAN_MESSAGE_HEADER.size() + 5) {
+    //
+    // Walk the buffer starting at position 0, dispatching every Axiomatic
+    // protocol message we find by its Message ID:
+    //   - CAN Stream (ID 1): extract every CAN frame from its body into
+    //     pending_frames_. This handles both frames packed inside one message
+    //     and multiple CAN Stream messages coalesced into one TCP read.
+    //   - Heartbeat / Status Response / CAN FD Stream / unknown ID: skip past
+    //     the message using its declared Message Data Length. The frames are
+    //     not surfaced to the caller, but trailing CAN frames in the same
+    //     read are still recovered.
+    //
+    // We compare only the first 6 bytes of the header constant ("AXIO" +
+    // 0xBA 0x36) so the sync match doesn't require Message ID = 1 like the
+    // previous strict 7-byte check did. That earlier behavior would reject
+    // an entire TCP read whose first protocol message happened to be a
+    // heartbeat — including any CAN frames that followed it in the same
+    // buffer. Loss of those trailing CAN frames was the most likely cause
+    // of single-frame drops during UDS flashes (heartbeats land at the
+    // front of a TCP read once per second on average, and a flash takes
+    // long enough to make a coincidence with a critical response likely).
+    if (data.size() < 11) {
       std::cerr << "[Axiomatic parser] DROP: received " << data.size()
                 << " bytes, too short to contain a complete protocol header" << std::endl;
-      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Data too short for header and control byte.");
-    }
-    if (!std::equal(AXIOMATIC_CAN_MESSAGE_HEADER.begin(), AXIOMATIC_CAN_MESSAGE_HEADER.end(), data.begin())) {
-      std::cerr << "[Axiomatic parser] DROP: position-0 header mismatch in " << data.size()
-                << "-byte TCP read; first 11 bytes: " << std::hex;
-      for (size_t i = 0; i < std::min<size_t>(11, data.size()); ++i) {
-        std::cerr << ' ' << static_cast<int>(data[i]);
-      }
-      std::cerr << std::dec << " (likely a non-CAN-Stream message at position 0 — heartbeat, status, etc."
-                << " — entire TCP read dropped including any trailing CAN frames)" << std::endl;
-      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Not a valid CAN message.");
+      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Data too short for header.");
     }
 
-    uint8_t control_byte = data[11];
-    const uint8_t ts_bits = (control_byte & CONTROL_BYTE_TIMESTAMP_LENGTH_MASK) >> CONTROL_BYTE_TIMESTAMP_LENGTH_SHIFT;
-    size_t timestamp_size = TIMESTAMP_LENGTH_BYTES_TABLE[ts_bits];
-    bool is_can_extended = (control_byte & CONTROL_BYTE_EXTENDED_ID_FLAG) != 0;
-    size_t can_length = control_byte & CONTROL_BYTE_CAN_DATA_LENGTH_MASK;
-
-    // Determine where the CAN ID starts (after timestamp bytes)
-    size_t can_id_start = 12 + timestamp_size;
-    uint32_t can_id = 0;
-    size_t can_data_start = 0;
-
-    // Ensure data is large enough for CAN ID extraction
-    size_t min_id_size = is_can_extended ? 4 : 2;
-    if (data.size() < can_id_start + min_id_size) {
-      std::cerr << "[Axiomatic parser] DROP: TCP read truncated before CAN ID (need " << (can_id_start + min_id_size)
-                << " bytes, have " << data.size() << ")" << std::endl;
-      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Data too short for CAN ID.");
-    }
-
-    // Extract CAN ID (little-endian)
-    if (!is_can_extended) {
-      can_id = static_cast<uint16_t>(data[can_id_start] | (data[can_id_start + 1] << 8));
-      can_data_start = can_id_start + 2;
-    } else {
-      can_id = static_cast<uint32_t>(
-        data[can_id_start] | (data[can_id_start + 1] << 8) | (data[can_id_start + 2] << 16) |
-        (data[can_id_start + 3] << 24));
-      can_data_start = can_id_start + 4;
-      can_frame.set_id_as_extended();
-    }
-
-    // Ensure data is large enough for CAN payload
-    if (data.size() < can_data_start + can_length) {
-      std::cerr << "[Axiomatic parser] DROP: TCP read truncated before CAN payload (need "
-                << (can_data_start + can_length) << " bytes for " << can_length << "-byte payload, have " << data.size()
-                << ")" << std::endl;
-      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Data too short for CAN payload.");
-    }
-
-    // Extract CAN data (zero-padded to 8 bytes)
-    std::array<uint8_t, 8> can_data = {0};
-    std::copy_n(data.begin() + can_data_start, can_length, can_data.begin());
-
-    // Set CAN frame properties
-    can_frame.set_can_id(can_id);
-    can_frame.set_len(can_length);
-    can_frame.set_data(can_data);
-
-    // walk the rest of this CAN Stream message body for packed CAN frames -- one protocol message can have >1 CAN Frame
-    // The Axiomatic device packs multiple CAN frames into one protocol message
-    const size_t declared_data_len = static_cast<size_t>(data[9]) | (static_cast<size_t>(data[10]) << 8);
-    const size_t first_msg_body_end = std::min<size_t>(11 + declared_data_len, data.size());
-    decodePackedCanFramesInto(data, can_data_start + can_length, first_msg_body_end);
-
-    // walk forward through any additional Axiomatic protocol messages that arrived in the same TCP buffer
-    size_t scan_pos = 11 + declared_data_len;
+    size_t scan_pos = 0;
     while (scan_pos + 11 <= data.size()) {
-      // check for garbage -- non-axiomatic header
       if (!std::equal(
             AXIOMATIC_CAN_MESSAGE_HEADER.begin(), AXIOMATIC_CAN_MESSAGE_HEADER.begin() + 6, data.begin() + scan_pos))
       {
@@ -330,21 +282,32 @@ public:
                   << " bytes ignored — possible truncated message or partial TCP read)" << std::endl;
         break;
       }
-      const uint16_t next_msg_id =
+      const uint16_t msg_id =
         static_cast<uint16_t>(data[scan_pos + 6]) | (static_cast<uint16_t>(data[scan_pos + 7]) << 8);
-      const size_t next_decl_len =
-        static_cast<size_t>(data[scan_pos + 9]) | (static_cast<size_t>(data[scan_pos + 10]) << 8);
-      const size_t next_body_end = std::min<size_t>(scan_pos + 11 + next_decl_len, data.size());
-      if (next_msg_id == 1) {
-        decodePackedCanFramesInto(data, scan_pos + 11, next_body_end);
+      const size_t decl_len = static_cast<size_t>(data[scan_pos + 9]) | (static_cast<size_t>(data[scan_pos + 10]) << 8);
+      const size_t body_end = std::min<size_t>(scan_pos + 11 + decl_len, data.size());
+      if (msg_id == 1) {  // CAN Stream (deprecated, but what V5.05 firmware emits)
+        decodePackedCanFramesInto(data, scan_pos + 11, body_end);
       } else {
-        std::cerr << "[Axiomatic parser] SKIP: non-CAN-Stream message (Message ID " << next_msg_id << ", "
-                  << next_decl_len << "-byte body) at offset " << scan_pos
-                  << " — heartbeat/status/FD/unknown; not delivered to caller" << std::endl;
+        std::cerr << "[Axiomatic parser] SKIP: non-CAN-Stream message (Message ID " << msg_id << ", " << decl_len
+                  << "-byte body) at offset " << scan_pos << " — heartbeat/status/FD/unknown; not delivered to caller"
+                  << std::endl;
       }
-      scan_pos += 11 + next_decl_len;
+      scan_pos += 11 + decl_len;
     }
 
+    if (pending_frames_.empty()) {
+      // Either the buffer started with non-Axiomatic bytes (scan_pos still 0),
+      // or it contained only non-CAN-Stream protocol traffic (heartbeats etc.).
+      // Neither case is a real error; the default error_callback_ swallows it.
+      if (scan_pos == 0) {
+        return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Not a valid Axiomatic message.");
+      }
+      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("No CAN frames in received protocol traffic.");
+    }
+
+    can_frame = pending_frames_.front();
+    pending_frames_.pop_front();
     return std::nullopt;
   }
 
