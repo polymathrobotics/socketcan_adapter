@@ -122,7 +122,12 @@ public:
         tcp_socket_.set_option(boost::asio::ip::tcp::no_delay(true), nd_ec);
         if (nd_ec) {
           std::cerr << "[Axiomatic] Failed to set TCP_NODELAY: " << nd_ec.message() << std::endl;
+        } else {
+          std::cout << "[Axiomatic] TCP_NODELAY enabled (Nagle's algorithm disabled)" << std::endl;
         }
+      } else {
+        std::cout << "[Axiomatic] TCP_NODELAY disabled (Nagle's algorithm active — kernel may coalesce small writes)"
+                  << std::endl;
       }
 
       socket_state_ = TCPSocketState::OPEN;
