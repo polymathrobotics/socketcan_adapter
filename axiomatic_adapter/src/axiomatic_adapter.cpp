@@ -45,7 +45,8 @@ public:
     const std::string & port,
     const std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> && receive_callback_function,
     const std::function<void(AxiomaticAdapter::socket_error_string_t error)> && error_callback_function,
-    const std::chrono::milliseconds & receive_timeout_ms)
+    const std::chrono::milliseconds & receive_timeout_ms,
+    bool tcp_nodelay)
   : tcp_io_context_()
   , tcp_socket_(tcp_io_context_)
   , ip_address_(ip_address)
@@ -54,6 +55,7 @@ public:
   , error_callback_(error_callback_function)
   , receive_timeout_ms_(receive_timeout_ms)
   , rx_buffer_(RECEIVE_BUFFER_SIZE, 0)
+  , tcp_nodelay_(tcp_nodelay)
   {}
 
   ~AxiomaticAdapterImpl()
@@ -113,9 +115,9 @@ public:
         socket_state_ = TCPSocketState::ERROR;
         return false;
       }
-      // disable Nagle's algorithm. This removes batching TCP packets for low latency comms and
-      // keeps one CAN frame per TCP message
-      {
+      // optionally disable Nagle's algorithm so each CAN frame becomes its
+      // own TCP segment instead of being coalesced
+      if (tcp_nodelay_) {
         boost::system::error_code nd_ec;
         tcp_socket_.set_option(boost::asio::ip::tcp::no_delay(true), nd_ec);
         if (nd_ec) {
@@ -202,7 +204,6 @@ public:
       return std::nullopt;
     }
 
-    auto & data = rx_buffer_;
     size_t bytes_received = 0;
     std::atomic<bool> data_received(false);
     boost::system::error_code error_code;
@@ -213,7 +214,7 @@ public:
 
     // start async receive operation
     tcp_socket_.async_receive(
-      boost::asio::buffer(data.data(), RECEIVE_BUFFER_SIZE),
+      boost::asio::buffer(rx_buffer_.data(), RECEIVE_BUFFER_SIZE),
       [&](const boost::system::error_code & error, std::size_t bytes_transferred) {
         error_code = error;
         if (!error) {
@@ -245,8 +246,11 @@ public:
     }
 
     // --- Process the received data ---
-
     // walk the buffer starting at position 0, dispatching every Axiomatic protocol message we find by its Message ID
+
+    // NOTE: given the axiomatic documentation claims a deliberate 256-byte design + the large buffer size used in
+    // rx_buffer_, a mid-tcp-message split is never supposed to occur. In testing this drop has never happened.
+    // it is possible that with non-standard very low MTU's or in future revisions, this assumption no longer holds
     if (bytes_received < PROTOCOL_HEADER_BYTES) {
       std::cerr << "[Axiomatic parser] DROP: received " << bytes_received
                 << " bytes, too short to contain a complete protocol header" << std::endl;
@@ -258,26 +262,26 @@ public:
       auto protocol_header_match = std::equal(
         AXIOMATIC_CAN_MESSAGE_HEADER.begin(),
         AXIOMATIC_CAN_MESSAGE_HEADER.begin() + PROTOCOL_SYNC_PREFIX_BYTES,
-        data.begin() + scan_pos);
+        rx_buffer_.begin() + scan_pos);
       if (!protocol_header_match) {
         std::cerr << "[Axiomatic parser] DROP: sync prefix mismatch at offset " << scan_pos << " of " << bytes_received
                   << "-byte TCP read; first " << PROTOCOL_SYNC_PREFIX_BYTES << " bytes there: " << std::hex;
         for (size_t i = 0; i < PROTOCOL_SYNC_PREFIX_BYTES && scan_pos + i < bytes_received; ++i) {
-          std::cerr << ' ' << static_cast<int>(data[scan_pos + i]);
+          std::cerr << ' ' << static_cast<int>(rx_buffer_[scan_pos + i]);
         }
         std::cerr << std::dec << " (stopping scan; remaining " << (bytes_received - scan_pos)
                   << " bytes ignored — possible truncated message or partial TCP read)" << std::endl;
         break;
       }
       const auto msg_id = static_cast<MessageId>(
-        static_cast<uint16_t>(data[scan_pos + MESSAGE_ID_HEADER_OFFSET]) |
-        (static_cast<uint16_t>(data[scan_pos + MESSAGE_ID_HEADER_OFFSET + 1]) << BITS_PER_BYTE));
+        static_cast<uint16_t>(rx_buffer_[scan_pos + MESSAGE_ID_HEADER_OFFSET]) |
+        (static_cast<uint16_t>(rx_buffer_[scan_pos + MESSAGE_ID_HEADER_OFFSET + 1]) << BITS_PER_BYTE));
       const size_t decl_len =
-        static_cast<size_t>(data[scan_pos + MESSAGE_DATA_LENGTH_HEADER_OFFSET]) |
-        (static_cast<size_t>(data[scan_pos + MESSAGE_DATA_LENGTH_HEADER_OFFSET + 1]) << BITS_PER_BYTE);
+        static_cast<size_t>(rx_buffer_[scan_pos + MESSAGE_DATA_LENGTH_HEADER_OFFSET]) |
+        (static_cast<size_t>(rx_buffer_[scan_pos + MESSAGE_DATA_LENGTH_HEADER_OFFSET + 1]) << BITS_PER_BYTE);
       const size_t body_end = std::min<size_t>(scan_pos + PROTOCOL_HEADER_BYTES + decl_len, bytes_received);
       if (msg_id == MessageId::CanStream) {
-        decodePackedCanFramesInto(data, scan_pos + PROTOCOL_HEADER_BYTES, body_end);
+        decodePackedCanFramesInto(rx_buffer_, scan_pos + PROTOCOL_HEADER_BYTES, body_end);
       } else {
         std::cerr << "[Axiomatic parser] SKIP: non-CAN-Stream message (Message ID " << static_cast<uint16_t>(msg_id)
                   << ", " << decl_len << "-byte body) at offset " << scan_pos
@@ -299,11 +303,11 @@ public:
   }
 
   // walks the body of a single CAN Stream message and pushes every CAN frame onto pending_frames_
-  void decodePackedCanFramesInto(const std::vector<uint8_t> & data, size_t body_start, size_t body_end)
+  void decodePackedCanFramesInto(const std::vector<uint8_t> & data_buffer, size_t body_start, size_t body_end)
   {
     size_t walker = body_start;
     while (walker + CONTROL_BYTE_BYTES <= body_end) {
-      const uint8_t control_byte = data[walker];
+      const uint8_t control_byte = data_buffer[walker];
       if ((control_byte & CONTROL_BYTE_NOTIFICATION_FRAME_FLAG) != 0) {
         std::cerr << "[Axiomatic parser] SKIP: notification frame (CB=0x" << std::hex << static_cast<int>(control_byte)
                   << std::dec << ") at offset " << walker << " — not delivered to caller" << std::endl;
@@ -326,10 +330,10 @@ public:
       const size_t id_offset = walker + CONTROL_BYTE_BYTES + timestamp_size;
       uint32_t can_id = 0;
       for (size_t i = 0; i < id_size; ++i) {
-        can_id |= static_cast<uint32_t>(data[id_offset + i]) << (BITS_PER_BYTE * i);
+        can_id |= static_cast<uint32_t>(data_buffer[id_offset + i]) << (BITS_PER_BYTE * i);
       }
       std::array<uint8_t, 8> data_bytes = {0};
-      std::copy_n(data.begin() + id_offset + id_size, can_data_length, data_bytes.begin());
+      std::copy_n(data_buffer.begin() + id_offset + id_size, can_data_length, data_bytes.begin());
 
       polymath::socketcan::CanFrame extra;
       extra.set_can_id(can_id);
@@ -525,6 +529,9 @@ private:
 
   // receive buffer for async_receive — allocated once at construction and reused across every receive() call
   std::vector<uint8_t> rx_buffer_;
+
+  // when true, disable Nagle's algorithm on the TCP socket after connect
+  bool tcp_nodelay_;
 };
 
 AxiomaticAdapter::AxiomaticAdapter(
@@ -532,9 +539,15 @@ AxiomaticAdapter::AxiomaticAdapter(
   const std::string & port,
   const std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> && receive_callback_function,
   const std::function<void(AxiomaticAdapter::socket_error_string_t error)> && error_callback_function,
-  const std::chrono::milliseconds & receive_timeout_ms)
+  const std::chrono::milliseconds & receive_timeout_ms,
+  bool tcp_nodelay)
 : pimpl_(std::make_unique<AxiomaticAdapterImpl>(
-    ip_address, port, std::move(receive_callback_function), std::move(error_callback_function), receive_timeout_ms))
+    ip_address,
+    port,
+    std::move(receive_callback_function),
+    std::move(error_callback_function),
+    receive_timeout_ms,
+    tcp_nodelay))
 {}
 
 AxiomaticAdapter::~AxiomaticAdapter()

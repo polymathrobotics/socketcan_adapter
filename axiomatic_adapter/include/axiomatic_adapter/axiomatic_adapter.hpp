@@ -54,7 +54,18 @@ public:
   /// @brief AxiomaticAdapter Class Init
   /// @param ip_address Axiomatic Device IP address to connect
   /// @param port Axiomatic Device Port to connect to
+  /// @param receive_callback_function called for each CAN frame received from the converter
+  /// @param error_callback_function called for socket errors and unrecoverable parser conditions
   /// @param receive_timeout_ms receive timeout in milliseconds
+  /// @param tcp_nodelay when true (default), sets TCP_NODELAY on the socket after connect to
+  ///                    disable Nagle's algorithm. This eliminates the device's delayed-ACK +
+  ///                    Nagle interaction that produces 30-450 ms inter-segment stalls under
+  ///                    sustained CAN traffic, at the cost of higher packet-per-second rate
+  ///                    on the network (each small CAN frame becomes its own TCP segment with
+  ///                    ~40 bytes of IP+TCP header overhead — meaning more interrupts/syscalls
+  ///                    on both sides, more switch/NIC PPS load, and worse bytes-on-wire
+  ///                    efficiency for bulk transfers). Better for real-time, but can, in constrained
+  ///                    resource environments, cause issues
   AxiomaticAdapter(
     const std::string & ip_address,
     const std::string & port,
@@ -62,7 +73,8 @@ public:
       [](std::unique_ptr<const polymath::socketcan::CanFrame> /*frame*/) { /*do nothing*/ },
     const std::function<void(socket_error_string_t error)> && error_callback_function =
       [](socket_error_string_t /*error*/) { /*do nothing*/ },
-    const std::chrono::milliseconds & receive_timeout_ms = AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS);
+    const std::chrono::milliseconds & receive_timeout_ms = AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS,
+    bool tcp_nodelay = true);
 
   /// @brief Destructor for AxiomaticAdapter
   virtual ~AxiomaticAdapter();

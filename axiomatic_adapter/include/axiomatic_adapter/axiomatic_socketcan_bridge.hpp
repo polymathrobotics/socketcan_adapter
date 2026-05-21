@@ -36,8 +36,15 @@ public:
   /// @param ip IP address of the ethernet can device
   /// @param port port for the ethernet can device
   /// @param verbose enables printing of debug logs if true. Defaults to false
+  /// @param tcp_nodelay when true (default), sets TCP_NODELAY on the underlying
+  ///                    AxiomaticAdapter socket. See AxiomaticAdapter for the
+  ///                    full tradeoff discussion.
   AxiomaticSocketcanBridge(
-    const std::string & can_interface_name, const std::string & ip, const std::string & port, bool verbose = false);
+    const std::string & can_interface_name,
+    const std::string & ip,
+    const std::string & port,
+    bool verbose = false,
+    bool tcp_nodelay = true);
 
   /// @brief Destruct axiomatic socketcan bridge
   ~AxiomaticSocketcanBridge();
