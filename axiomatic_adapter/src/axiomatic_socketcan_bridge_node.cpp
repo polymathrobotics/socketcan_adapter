@@ -48,7 +48,8 @@ void configureArguments(
   std::string & port,
   bool & verbose,
   bool & retry_connection,
-  int & max_retry_attempts)
+  int & max_retry_attempts,
+  bool & tcp_nodelay)
 {
   app.add_option("can_interface", can_interface, "CAN interface to use (default: vcan0)")->default_val("vcan0");
   app.add_option("ip", ip, "IP address of the bridge (default: 192.168.0.34)")->default_val("192.168.0.34");
@@ -58,6 +59,10 @@ void configureArguments(
   app
     .add_option("--max-retry-attempts", max_retry_attempts, "Maximum number of retry attempts (default: -1 = infinite)")
     ->default_val(-1);
+  app.add_flag(
+    "!--no-tcp-nodelay",
+    tcp_nodelay,
+    "Disable TCP_NODELAY (re-enable Nagle's algorithm). Default is on; see the AxiomaticAdapter docs for tradeoffs.");
 }
 
 int main(int argc, char * argv[])
@@ -65,11 +70,12 @@ int main(int argc, char * argv[])
   std::signal(SIGINT, signalHandler);
   std::signal(SIGTERM, signalHandler);
   std::string can_interface, ip, port;
+  bool tcp_nodelay = true;
   CLI::App app{"Axiomatic SocketCAN Bridge"};
-  configureArguments(app, can_interface, ip, port, verbose, retry_connection, max_retry_attempts);
+  configureArguments(app, can_interface, ip, port, verbose, retry_connection, max_retry_attempts, tcp_nodelay);
   CLI11_PARSE(app, argc, argv);
 
-  polymath::can::AxiomaticSocketcanBridge bridge(can_interface, ip, port, verbose);
+  polymath::can::AxiomaticSocketcanBridge bridge(can_interface, ip, port, verbose, tcp_nodelay);
 
   std::cout << "Axiomatic Socketcan Bridge configuring..." << std::endl;
 
