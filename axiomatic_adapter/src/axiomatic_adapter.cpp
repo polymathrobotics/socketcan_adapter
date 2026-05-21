@@ -303,39 +303,39 @@ public:
   {
     size_t walker = body_start;
     while (walker + CONTROL_BYTE_BYTES <= body_end) {
-      const uint8_t cb = data[walker];
-      if ((cb & CONTROL_BYTE_NOTIFICATION_FRAME_FLAG) != 0) {
-        std::cerr << "[Axiomatic parser] SKIP: notification frame (CB=0x" << std::hex << static_cast<int>(cb)
+      const uint8_t control_byte = data[walker];
+      if ((control_byte & CONTROL_BYTE_NOTIFICATION_FRAME_FLAG) != 0) {
+        std::cerr << "[Axiomatic parser] SKIP: notification frame (CB=0x" << std::hex << static_cast<int>(control_byte)
                   << std::dec << ") at offset " << walker << " — not delivered to caller" << std::endl;
         walker += NOTIFICATION_FRAME_TOTAL_BYTES;
         continue;
       }
-      const size_t ts_size =
-        TIMESTAMP_LENGTH_BYTES_TABLE[(cb & CONTROL_BYTE_TIMESTAMP_LENGTH_MASK) >> CONTROL_BYTE_TIMESTAMP_LENGTH_SHIFT];
-      const bool ext_id = (cb & CONTROL_BYTE_EXTENDED_ID_FLAG) != 0;
-      const size_t id_size = ext_id ? EXTENDED_CAN_ID_BYTES : STANDARD_CAN_ID_BYTES;
-      const size_t dlc = cb & CONTROL_BYTE_CAN_DATA_LENGTH_MASK;
-      const size_t frame_bytes = CONTROL_BYTE_BYTES + ts_size + id_size + dlc;
+      const size_t timestamp_size = TIMESTAMP_LENGTH_BYTES_TABLE
+        [(control_byte & CONTROL_BYTE_TIMESTAMP_LENGTH_MASK) >> CONTROL_BYTE_TIMESTAMP_LENGTH_SHIFT];
+      const bool extended_id = (control_byte & CONTROL_BYTE_EXTENDED_ID_FLAG) != 0;
+      const size_t id_size = extended_id ? EXTENDED_CAN_ID_BYTES : STANDARD_CAN_ID_BYTES;
+      const size_t can_data_length = control_byte & CONTROL_BYTE_CAN_DATA_LENGTH_MASK;
+      const size_t frame_bytes = CONTROL_BYTE_BYTES + timestamp_size + id_size + can_data_length;
       if (walker + frame_bytes > body_end) {
         // truncated final frame — abandon rather than misdecode.
         std::cerr << "[Axiomatic parser] DROP: truncated CAN frame at offset " << walker << " (CB=0x" << std::hex
-                  << static_cast<int>(cb) << std::dec << " declares " << frame_bytes << " bytes but only "
+                  << static_cast<int>(control_byte) << std::dec << " declares " << frame_bytes << " bytes but only "
                   << (body_end - walker) << " bytes remain in message body) — frame and remainder dropped" << std::endl;
         break;
       }
-      const size_t id_offset = walker + CONTROL_BYTE_BYTES + ts_size;
-      uint32_t cid = 0;
+      const size_t id_offset = walker + CONTROL_BYTE_BYTES + timestamp_size;
+      uint32_t can_id = 0;
       for (size_t i = 0; i < id_size; ++i) {
-        cid |= static_cast<uint32_t>(data[id_offset + i]) << (BITS_PER_BYTE * i);
+        can_id |= static_cast<uint32_t>(data[id_offset + i]) << (BITS_PER_BYTE * i);
       }
-      std::array<uint8_t, 8> dbytes = {0};
-      std::copy_n(data.begin() + id_offset + id_size, dlc, dbytes.begin());
+      std::array<uint8_t, 8> data_bytes = {0};
+      std::copy_n(data.begin() + id_offset + id_size, can_data_length, data_bytes.begin());
 
       polymath::socketcan::CanFrame extra;
-      extra.set_can_id(cid);
-      extra.set_len(static_cast<unsigned char>(dlc));
-      extra.set_data(dbytes);
-      if (ext_id) {
+      extra.set_can_id(can_id);
+      extra.set_len(static_cast<unsigned char>(can_data_length));
+      extra.set_data(data_bytes);
+      if (extended_id) {
         extra.set_id_as_extended();
       }
       pending_frames_.push_back(extra);
@@ -471,13 +471,13 @@ private:
   // frame in a CAN Stream message body
   static constexpr size_t CONTROL_BYTE_BYTES = 1;
 
-  // control Byte (CB) field layout — first byte of every CAN/Notification
+  // control byte (CB) field layout — first byte of every CAN/Notification
   // frame inside a CAN Stream message body. Per Axiomatic Communication
   // protocol spec v6, Section "Control Byte":
   //   bit  7   : C_Bit    — 0 = CAN Frame, 1 = Notification Frame
   //   bits 6:5 : TS_Bit   — Time Stamp length code (see TIMESTAMP_LENGTH_BYTES_TABLE)
   //   bit  4   : EID_Bit  — 0 = standard 11-bit ID, 1 = extended 29-bit ID
-  //   bits 3:0 : L_Bit    — CAN Data Length (DLC), 0..8 valid
+  //   bits 3:0 : L_Bit    — CAN Data Length (can_data_length), 0..8 valid
   static constexpr uint8_t CONTROL_BYTE_NOTIFICATION_FRAME_FLAG = 0x80;
   static constexpr uint8_t CONTROL_BYTE_TIMESTAMP_LENGTH_MASK = 0x60;
   static constexpr int CONTROL_BYTE_TIMESTAMP_LENGTH_SHIFT = 5;
