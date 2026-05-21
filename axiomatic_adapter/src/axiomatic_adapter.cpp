@@ -477,7 +477,7 @@ private:
   //   bit  7   : C_Bit    — 0 = CAN Frame, 1 = Notification Frame
   //   bits 6:5 : TS_Bit   — Time Stamp length code (see TIMESTAMP_LENGTH_BYTES_TABLE)
   //   bit  4   : EID_Bit  — 0 = standard 11-bit ID, 1 = extended 29-bit ID
-  //   bits 3:0 : L_Bit    — CAN Data Length (can_data_length), 0..8 valid
+  //   bits 3:0 : L_Bit    — CAN Data Length (DLC), 0..8 valid
   static constexpr uint8_t CONTROL_BYTE_NOTIFICATION_FRAME_FLAG = 0x80;
   static constexpr uint8_t CONTROL_BYTE_TIMESTAMP_LENGTH_MASK = 0x60;
   static constexpr int CONTROL_BYTE_TIMESTAMP_LENGTH_SHIFT = 5;
