@@ -53,6 +53,7 @@ public:
   , receive_callback_(receive_callback_function)
   , error_callback_(error_callback_function)
   , receive_timeout_ms_(receive_timeout_ms)
+  , rx_buffer_(RECEIVE_BUFFER_SIZE, 0)
   {}
 
   ~AxiomaticAdapterImpl()
@@ -73,17 +74,17 @@ public:
       TCPSocketConnectionState connection_state{false, boost::asio::error::would_block};
       std::mutex connection_state_mutex;
 
-      // Asynchronously attempt to connect
+      // asynchronously attempt to connect
       boost::asio::async_connect(
         tcp_socket_, endpoints, [&](const boost::system::error_code & error, const boost::asio::ip::tcp::endpoint &) {
           std::lock_guard<std::mutex> guard(connection_state_mutex);
           connection_state.error_code = error;
           connection_state.connected = !error;
-          // Cancel timeout if connected successfully
+          // cancel timeout if connected successfully
           timer.cancel();
         });
 
-      // Set up a timer to cancel the operation if it exceeds the timeout
+      // set up a timer to cancel the operation if it exceeds the timeout
       timer.async_wait([&](const boost::system::error_code & error) {
         if (!error) {
           std::lock_guard<std::mutex> guard(connection_state_mutex);
@@ -94,7 +95,7 @@ public:
         }
       });
 
-      // Run the I/O context to handle events
+      // run the I/O context to handle events
       tcp_io_context_.restart();
       tcp_io_context_.run();
 
@@ -112,7 +113,7 @@ public:
         socket_state_ = TCPSocketState::ERROR;
         return false;
       }
-      // Disable Nagle's algorithm. This removes batching TCP packets for low latency comms and
+      // disable Nagle's algorithm. This removes batching TCP packets for low latency comms and
       // keeps one CAN frame per TCP message
       {
         boost::system::error_code nd_ec;
@@ -180,10 +181,10 @@ public:
     stop_thread_requested_ = true;
 
     if (tcp_receive_thread_.joinable()) {
-      // Use std::async to wait asynchronously for the thread to stop
+      // use std::async to wait asynchronously for the thread to stop
       std::future<void> join_future = std::async(std::launch::async, [this] { tcp_receive_thread_.join(); });
 
-      // Wait for the thread to stop within the timeout period
+      // wait for the thread to stop within the timeout period
       return join_future.wait_for(timeout_s) == std::future_status::ready;
     }
 
@@ -201,39 +202,41 @@ public:
       return std::nullopt;
     }
 
-    std::vector<uint8_t> data(RECEIVE_BUFFER_SIZE, 0);
+    auto & data = rx_buffer_;
+    size_t bytes_received = 0;
     std::atomic<bool> data_received(false);
     boost::system::error_code error_code;
 
-    // Set up the timer for timeout
+    // set up the timer for timeout
     boost::asio::steady_timer timer(tcp_io_context_);
     timer.expires_after(receive_timeout_ms_);
 
-    // Start async receive operation
+    // start async receive operation
     tcp_socket_.async_receive(
-      boost::asio::buffer(data), [&](const boost::system::error_code & error, std::size_t bytes_transferred) {
+      boost::asio::buffer(data.data(), RECEIVE_BUFFER_SIZE),
+      [&](const boost::system::error_code & error, std::size_t bytes_transferred) {
         error_code = error;
         if (!error) {
-          data.resize(bytes_transferred);
+          bytes_received = bytes_transferred;
           data_received = true;
         }
         timer.cancel();
       });
 
-    // Set up the timer to handle timeout cancellation
+    // set up the timer to handle timeout cancellation
     timer.async_wait([&](const boost::system::error_code & error) {
       if (!error && !data_received.load()) {
         error_code = boost::asio::error::timed_out;
-        // Cancel the ongoing async receive operation on timeout (does not close socket)
+        // cancel the ongoing async receive operation on timeout (does not close socket)
         tcp_socket_.cancel();
       }
     });
 
-    // Run the I/O operations concurrently (this allows for new async operations in the future)
+    // run the I/O operations concurrently (this allows for new async operations in the future)
     tcp_io_context_.restart();
     tcp_io_context_.run();
 
-    // Check for timeout or other errors
+    // check for timeout or other errors
     if (error_code == boost::asio::error::timed_out) {
       return std::optional<AxiomaticAdapter::socket_error_string_t>("Receive operation timed out");
     } else if (error_code) {
@@ -244,38 +247,43 @@ public:
     // --- Process the received data ---
 
     // walk the buffer starting at position 0, dispatching every Axiomatic protocol message we find by its Message ID
-    if (data.size() < 11) {
-      std::cerr << "[Axiomatic parser] DROP: received " << data.size()
+    if (bytes_received < PROTOCOL_HEADER_BYTES) {
+      std::cerr << "[Axiomatic parser] DROP: received " << bytes_received
                 << " bytes, too short to contain a complete protocol header" << std::endl;
       return std::make_optional<AxiomaticAdapter::socket_error_string_t>("Data too short for header.");
     }
 
     size_t scan_pos = 0;
-    while (scan_pos + 11 <= data.size()) {
-      if (!std::equal(
-            AXIOMATIC_CAN_MESSAGE_HEADER.begin(), AXIOMATIC_CAN_MESSAGE_HEADER.begin() + 6, data.begin() + scan_pos))
-      {
-        std::cerr << "[Axiomatic parser] DROP: sync prefix mismatch at offset " << scan_pos << " of " << data.size()
-                  << "-byte TCP read; first 6 bytes there: " << std::hex;
-        for (size_t i = 0; i < 6 && scan_pos + i < data.size(); ++i) {
+    while (scan_pos + PROTOCOL_HEADER_BYTES <= bytes_received) {
+      auto protocol_header_match = std::equal(
+        AXIOMATIC_CAN_MESSAGE_HEADER.begin(),
+        AXIOMATIC_CAN_MESSAGE_HEADER.begin() + PROTOCOL_SYNC_PREFIX_BYTES,
+        data.begin() + scan_pos);
+      if (!protocol_header_match) {
+        std::cerr << "[Axiomatic parser] DROP: sync prefix mismatch at offset " << scan_pos << " of " << bytes_received
+                  << "-byte TCP read; first " << PROTOCOL_SYNC_PREFIX_BYTES << " bytes there: " << std::hex;
+        for (size_t i = 0; i < PROTOCOL_SYNC_PREFIX_BYTES && scan_pos + i < bytes_received; ++i) {
           std::cerr << ' ' << static_cast<int>(data[scan_pos + i]);
         }
-        std::cerr << std::dec << " (stopping scan; remaining " << (data.size() - scan_pos)
+        std::cerr << std::dec << " (stopping scan; remaining " << (bytes_received - scan_pos)
                   << " bytes ignored — possible truncated message or partial TCP read)" << std::endl;
         break;
       }
-      const uint16_t msg_id =
-        static_cast<uint16_t>(data[scan_pos + 6]) | (static_cast<uint16_t>(data[scan_pos + 7]) << 8);
-      const size_t decl_len = static_cast<size_t>(data[scan_pos + 9]) | (static_cast<size_t>(data[scan_pos + 10]) << 8);
-      const size_t body_end = std::min<size_t>(scan_pos + 11 + decl_len, data.size());
-      if (msg_id == 1) {  // CAN Stream (deprecated, but what V5.05 firmware emits)
-        decodePackedCanFramesInto(data, scan_pos + 11, body_end);
+      const auto msg_id = static_cast<MessageId>(
+        static_cast<uint16_t>(data[scan_pos + MESSAGE_ID_HEADER_OFFSET]) |
+        (static_cast<uint16_t>(data[scan_pos + MESSAGE_ID_HEADER_OFFSET + 1]) << BITS_PER_BYTE));
+      const size_t decl_len =
+        static_cast<size_t>(data[scan_pos + MESSAGE_DATA_LENGTH_HEADER_OFFSET]) |
+        (static_cast<size_t>(data[scan_pos + MESSAGE_DATA_LENGTH_HEADER_OFFSET + 1]) << BITS_PER_BYTE);
+      const size_t body_end = std::min<size_t>(scan_pos + PROTOCOL_HEADER_BYTES + decl_len, bytes_received);
+      if (msg_id == MessageId::CanStream) {
+        decodePackedCanFramesInto(data, scan_pos + PROTOCOL_HEADER_BYTES, body_end);
       } else {
-        std::cerr << "[Axiomatic parser] SKIP: non-CAN-Stream message (Message ID " << msg_id << ", " << decl_len
-                  << "-byte body) at offset " << scan_pos << " — heartbeat/status/FD/unknown; not delivered to caller"
-                  << std::endl;
+        std::cerr << "[Axiomatic parser] SKIP: non-CAN-Stream message (Message ID " << static_cast<uint16_t>(msg_id)
+                  << ", " << decl_len << "-byte body) at offset " << scan_pos
+                  << " — heartbeat/status/FD/unknown; not delivered to caller" << std::endl;
       }
-      scan_pos += 11 + decl_len;
+      scan_pos += PROTOCOL_HEADER_BYTES + decl_len;
     }
 
     if (pending_frames_.empty()) {
@@ -294,7 +302,7 @@ public:
   void decodePackedCanFramesInto(const std::vector<uint8_t> & data, size_t body_start, size_t body_end)
   {
     size_t walker = body_start;
-    while (walker + 1 <= body_end) {
+    while (walker + CONTROL_BYTE_BYTES <= body_end) {
       const uint8_t cb = data[walker];
       if ((cb & CONTROL_BYTE_NOTIFICATION_FRAME_FLAG) != 0) {
         std::cerr << "[Axiomatic parser] SKIP: notification frame (CB=0x" << std::hex << static_cast<int>(cb)
@@ -305,9 +313,9 @@ public:
       const size_t ts_size =
         TIMESTAMP_LENGTH_BYTES_TABLE[(cb & CONTROL_BYTE_TIMESTAMP_LENGTH_MASK) >> CONTROL_BYTE_TIMESTAMP_LENGTH_SHIFT];
       const bool ext_id = (cb & CONTROL_BYTE_EXTENDED_ID_FLAG) != 0;
-      const size_t id_size = ext_id ? 4 : 2;
+      const size_t id_size = ext_id ? EXTENDED_CAN_ID_BYTES : STANDARD_CAN_ID_BYTES;
       const size_t dlc = cb & CONTROL_BYTE_CAN_DATA_LENGTH_MASK;
-      const size_t frame_bytes = 1 + ts_size + id_size + dlc;
+      const size_t frame_bytes = CONTROL_BYTE_BYTES + ts_size + id_size + dlc;
       if (walker + frame_bytes > body_end) {
         // truncated final frame — abandon rather than misdecode.
         std::cerr << "[Axiomatic parser] DROP: truncated CAN frame at offset " << walker << " (CB=0x" << std::hex
@@ -315,10 +323,10 @@ public:
                   << (body_end - walker) << " bytes remain in message body) — frame and remainder dropped" << std::endl;
         break;
       }
-      const size_t id_offset = walker + 1 + ts_size;
+      const size_t id_offset = walker + CONTROL_BYTE_BYTES + ts_size;
       uint32_t cid = 0;
       for (size_t i = 0; i < id_size; ++i) {
-        cid |= static_cast<uint32_t>(data[id_offset + i]) << (8 * i);
+        cid |= static_cast<uint32_t>(data[id_offset + i]) << (BITS_PER_BYTE * i);
       }
       std::array<uint8_t, 8> dbytes = {0};
       std::copy_n(data.begin() + id_offset + id_size, dlc, dbytes.begin());
@@ -346,19 +354,31 @@ public:
   {
     auto frame_data = frame.get_data();
     auto frame_data_length = frame.get_len();
-    size_t control_timestamp_byte_length = 3;
 
-    // Determine the CAN frame ID length (extended or standard)
+    // the CAN Frame body emitted on the wire is laid out as:
+    //   1 byte Control Byte + 2 bytes Time Stamp + N bytes CAN ID + 8 bytes data
+    static constexpr size_t SEND_TIME_STAMP_BYTES = 2;
+    static constexpr size_t SEND_CONTROL_AND_TIMESTAMP_BYTES = CONTROL_BYTE_BYTES + SEND_TIME_STAMP_BYTES;
+
+    // hard coded outbound time-stamp bytes (0x46C0)
+    static constexpr uint8_t SEND_TIME_STAMP_BYTE_0 = 192;
+    static constexpr uint8_t SEND_TIME_STAMP_BYTE_1 = 70;
+
+    // reserved high bytes of the header that sit between Protocol ID and Message Data Length (spec calls this "Message ID high byte" + "Message
+    // version", both 0 for our outbound CAN Stream messages).
+    static constexpr uint8_t SEND_RESERVED_BYTE_0 = 0x00;
+    static constexpr uint8_t SEND_RESERVED_BYTE_1 = 0x00;
+
     size_t frame_id_byte_length;
     bool is_extended = false;
     if (frame.get_id_type() == polymath::socketcan::IdType::EXTENDED) {
-      frame_id_byte_length = 4;
+      frame_id_byte_length = EXTENDED_CAN_ID_BYTES;
       is_extended = true;
     } else {
-      frame_id_byte_length = 2;
+      frame_id_byte_length = STANDARD_CAN_ID_BYTES;
     }
 
-    size_t message_length = frame_data_length + control_timestamp_byte_length + frame_id_byte_length;
+    size_t message_length = frame_data_length + SEND_CONTROL_AND_TIMESTAMP_BYTES + frame_id_byte_length;
     unsigned char control_byte = CONTROL_BYTE_TIMESTAMP_2_BYTE_VALUE;
     control_byte |= (is_extended ? CONTROL_BYTE_EXTENDED_ID_FLAG : 0);
     control_byte |= (frame_data_length & CONTROL_BYTE_CAN_DATA_LENGTH_MASK);
@@ -366,18 +386,18 @@ public:
     // initialize the full message with the header, control bytes, timestamp bytes
     std::vector<uint8_t> full_message;
     full_message.insert(full_message.end(), AXIOMATIC_CAN_MESSAGE_HEADER.begin(), AXIOMATIC_CAN_MESSAGE_HEADER.end());
-    full_message.push_back(0x00);
-    full_message.push_back(0x00);
+    full_message.push_back(SEND_RESERVED_BYTE_0);
+    full_message.push_back(SEND_RESERVED_BYTE_1);
     full_message.push_back(static_cast<uint8_t>(message_length & 0xFF));
-    full_message.push_back(static_cast<uint8_t>((message_length >> 8) & 0xFF));
+    full_message.push_back(static_cast<uint8_t>((message_length >> BITS_PER_BYTE) & 0xFF));
     full_message.push_back(control_byte);
-    full_message.push_back(192);
-    full_message.push_back(70);
+    full_message.push_back(SEND_TIME_STAMP_BYTE_0);
+    full_message.push_back(SEND_TIME_STAMP_BYTE_1);
 
     // insert the can frame id
     auto can_id = frame.get_id();
     for (size_t i = 0; i < frame_id_byte_length; ++i) {
-      full_message.push_back(static_cast<uint8_t>((can_id >> (i * 8)) & 0xFF));
+      full_message.push_back(static_cast<uint8_t>((can_id >> (i * BITS_PER_BYTE)) & 0xFF));
     }
     // insert the can frame data
     full_message.insert(full_message.end(), frame_data.begin(), frame_data.end());
@@ -404,15 +424,56 @@ private:
   static constexpr std::array<uint8_t, 7> AXIOMATIC_CAN_MESSAGE_HEADER = {'A', 'X', 'I', 'O', 0xBA, 0x36, 0x01};
   static constexpr std::chrono::milliseconds TCP_IP_CONNECTION_TIMEOUT_MS{3000};
 
-  // Receive buffer size for each async_receive call. Larger than the
-  // protocol's per-message cap (256 bytes) by a wide margin so that bursts
-  // of protocol messages coalesced by the kernel into a single TCP read fit
-  // comfortably without truncating any message mid-body
+  // receive buffer size for each async_receive call. Larger than the
+  // protocol's per-message cap (256 bytes) by a wide margin
   static constexpr size_t RECEIVE_BUFFER_SIZE = 65536;
+  static constexpr int BITS_PER_BYTE = 8;
 
-  // Control Byte (CB) field layout — first byte of every CAN/Notification
-  // Frame inside a CAN Stream message body. Per Axiomatic Communication
-  // Protocol spec v6, Section "Control Byte":
+  // axiomatic Protocol Message Header layout (per spec v6, Table 1):
+  //   bytes 0-3  : Axiomatic Tag "AXIO"
+  //   bytes 4-5  : Protocol ID (0x36BA, LSB first → 0xBA 0x36 on wire)
+  //   bytes 6-7  : Message ID (LSB first)
+  //   byte  8    : Message Version
+  //   bytes 9-10 : Message Data Length (LSB first)
+  // total header = 11 bytes; Message Data follows immediately after.
+  static constexpr size_t PROTOCOL_HEADER_BYTES = 11;
+
+  // the first 6 bytes of every Axiomatic header are constant ("AXIO" +
+  // protocol ID). Useful when we only want to validate "this is some
+  // axiomatic protocol message" without dictating Message ID.
+  static constexpr size_t PROTOCOL_SYNC_PREFIX_BYTES = 6;
+
+  // byte offset of the Message ID field (LSB) within a protocol header.
+  // message ID is a 2-byte little-endian value at offsets 6 and 7.
+  static constexpr size_t MESSAGE_ID_HEADER_OFFSET = 6;
+
+  // byte offset of the Message Data Length field (LSB) within a protocol
+  // header. 2-byte little-endian value at offsets 9 and 10. Names the body
+  // length, not the total message length.
+  static constexpr size_t MESSAGE_DATA_LENGTH_HEADER_OFFSET = 9;
+
+  // message IDs defined by the Axiomatic Communication Protocol (spec v6, table 3).
+  enum class MessageId : uint16_t
+  {
+    Undefined = 0,
+    CanStream = 1,
+    StatusRequest = 2,
+    StatusResponse = 3,
+    Heartbeat = 4,
+    CanFdStream = 5,
+  };
+
+  // CAN ID field width inside a CAN Stream message body
+  static constexpr size_t STANDARD_CAN_ID_BYTES = 2;
+  static constexpr size_t EXTENDED_CAN_ID_BYTES = 4;
+
+  // the Control Byte is a single byte at the start of every CAN/Notification
+  // frame in a CAN Stream message body
+  static constexpr size_t CONTROL_BYTE_BYTES = 1;
+
+  // control Byte (CB) field layout — first byte of every CAN/Notification
+  // frame inside a CAN Stream message body. Per Axiomatic Communication
+  // protocol spec v6, Section "Control Byte":
   //   bit  7   : C_Bit    — 0 = CAN Frame, 1 = Notification Frame
   //   bits 6:5 : TS_Bit   — Time Stamp length code (see TIMESTAMP_LENGTH_BYTES_TABLE)
   //   bit  4   : EID_Bit  — 0 = standard 11-bit ID, 1 = extended 29-bit ID
@@ -429,16 +490,14 @@ private:
   // raw 2-bit value as the byte count directly).
   static constexpr size_t TIMESTAMP_LENGTH_BYTES_TABLE[4] = {0, 1, 2, 4};
 
-  // TS_Bit code that send() writes into the Control Byte. We always include
-  // a 2-byte timestamp slot on outbound; firmware tolerates whatever bytes
-  // are there (spec says outbound TS is ignored by the converter).
+  // TS_Bit code that send() writes into the Control Byte
   static constexpr uint8_t CONTROL_BYTE_TIMESTAMP_2_BYTE_VALUE = static_cast<uint8_t>(2)
                                                                  << CONTROL_BYTE_TIMESTAMP_LENGTH_SHIFT;
 
-  // Notification Frame fixed size: 1-byte NIDB + 4-byte NDB1..NDB4.
+  // notification Frame fixed size: 1-byte NIDB + 4-byte NDB1..NDB4.
   static constexpr size_t NOTIFICATION_FRAME_TOTAL_BYTES = 5;
 
-  /// @brief Socket connection state as a struct for the mutex during TCP Open Socket to update the variables together
+  /// @brief socket connection state as a struct for the mutex during TCP Open Socket to update the variables together
   struct TCPSocketConnectionState
   {
     bool connected{false};
@@ -463,6 +522,9 @@ private:
   std::function<void(std::unique_ptr<const polymath::socketcan::CanFrame> frame)> receive_callback_;
   std::function<void(AxiomaticAdapter::socket_error_string_t error)> error_callback_;
   std::chrono::milliseconds receive_timeout_ms_;
+
+  // receive buffer for async_receive — allocated once at construction and reused across every receive() call
+  std::vector<uint8_t> rx_buffer_;
 };
 
 AxiomaticAdapter::AxiomaticAdapter(

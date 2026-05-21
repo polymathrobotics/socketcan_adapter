@@ -51,5 +51,5 @@ adapter.startReceptionThread();
 ```
 
 ## KNOWN ISSUES
-1. There seems to be an issue with massive amounts of CAN data causing timing inconsistencies through the adapter library
-   1. This has not been fully diagnosed
+1. Heartbeat messages are not handled. Using TCP, this does not cause issues. In future updates heartbeat messages should be consumed and sent as needed
+2. Only TCP mode is supported; no UDP support
