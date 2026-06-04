@@ -43,9 +43,15 @@ find_package(ament_cmake_ros REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(CLI11 REQUIRED)
 find_package(socketcan_adapter REQUIRED)
+find_package(Threads REQUIRED)
 
 # Axiomatic Adapter Library
-add_library(axiomatic_adapter SHARED src/axiomatic_adapter.cpp)
+add_library(axiomatic_adapter SHARED
+  src/axiomatic_adapter.cpp
+  src/axiomatic_protocol.cpp
+  src/udp_client.cpp
+  src/axiomatic_fd_backend.cpp
+)
 
 target_compile_features(axiomatic_adapter PUBLIC c_std_99 cxx_std_17)
 target_include_directories(axiomatic_adapter PUBLIC
@@ -57,6 +63,7 @@ target_link_libraries(axiomatic_adapter
   PUBLIC socketcan_adapter::socketcan_adapter
   PRIVATE
     Boost::system
+    Threads::Threads
 )
 
 install(DIRECTORY include/ DESTINATION include)
@@ -112,6 +119,17 @@ if(BUILD_TESTING)
     else()
       add_test(NAME test_axiomatic_adapter COMMAND test_axiomatic_adapter)
     endif()
+  endif()
+
+  # Tests for the new FD-backend codec + transport use GoogleTest; the legacy
+  # tests above use Catch2. Both frameworks coexist during the transition.
+  find_package(ament_cmake_gtest QUIET)
+  if(ament_cmake_gtest_FOUND)
+    ament_add_gtest(test_axiomatic_protocol test/test_axiomatic_protocol.cpp)
+    target_link_libraries(test_axiomatic_protocol axiomatic_adapter)
+
+    ament_add_gtest(test_udp_client test/test_udp_client.cpp)
+    target_link_libraries(test_udp_client axiomatic_adapter)
   endif()
 endif()
 
