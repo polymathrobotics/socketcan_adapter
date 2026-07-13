@@ -20,8 +20,10 @@ jobs:
             ubuntu: noble
           - ros: kilted
             ubuntu: noble
+          - ros: lyrical
+            ubuntu: resolute
           - ros: rolling
-            ubuntu: noble
+            ubuntu: resolute
     name: ROS 2 ${{ matrix.ros }}
     container:
       image: ghcr.io/ros-tooling/setup-ros-docker/setup-ros-docker-ubuntu-${{ matrix.ubuntu }}:latest
