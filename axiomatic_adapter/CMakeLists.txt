@@ -40,7 +40,7 @@ endif()
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_ros REQUIRED)
-find_package(Boost REQUIRED COMPONENTS system)
+find_package(Boost REQUIRED)
 find_package(CLI11 REQUIRED)
 find_package(socketcan_adapter REQUIRED)
 
@@ -56,7 +56,7 @@ set_target_properties(axiomatic_adapter PROPERTIES LINK_FLAGS "-Wl,--no-undefine
 target_link_libraries(axiomatic_adapter
   PUBLIC socketcan_adapter::socketcan_adapter
   PRIVATE
-    Boost::system
+    Boost::boost
 )
 
 install(DIRECTORY include/ DESTINATION include)
