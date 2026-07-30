@@ -16,6 +16,7 @@
 
 #include <linux/can.h>
 #include <linux/can/raw.h>
+#include <sys/socket.h>
 
 #include <algorithm>
 #include <atomic>
@@ -167,11 +168,23 @@ public:
 
     tcp_receive_thread_ = std::thread([this]() {
       while (!stop_thread_requested_) {
+        // a failed send() flags the link as lost; recover it here (on this
+        // thread, so it never races the read below). reconnect() returns false
+        // only on shutdown.
+        if (connection_lost_) {
+          if (!reconnect()) {
+            break;
+          }
+        }
+
         polymath::socketcan::CanFrame frame = polymath::socketcan::CanFrame();
         std::optional<AxiomaticAdapter::socket_error_string_t> error = receive(frame);
 
         if (!error) {
+          std::cerr << "[Axiomatic DBG] forwarding frame 0x" << std::hex << frame.get_id() << std::dec
+                    << " to socketcan..." << std::endl;
           receive_callback_(std::make_unique<polymath::socketcan::CanFrame>(frame));
+          std::cerr << "[Axiomatic DBG] ...forwarded to socketcan" << std::endl;
         } else {
           error_callback_(*error);
         }
@@ -195,6 +208,41 @@ public:
       return join_future.wait_for(timeout_s) == std::future_status::ready;
     }
 
+    return false;
+  }
+
+  // Tear down a broken socket and retry openSocket() every 100 ms until it
+  // reconnects or shutdown is requested. Runs ONLY on the reception thread, so
+  // it never races receive(). Returns false if a stop was requested first.
+  bool reconnect()
+  {
+    std::cerr << "[Axiomatic] Connection lost — reconnecting to " << ip_address_ << ":" << port_ << "..." << std::endl;
+
+    // force any in-flight send() to unblock and error out so it releases
+    // write_mutex_; without this a send() blocked on a wedged socket would
+    // deadlock the teardown below
+    ::shutdown(tcp_socket_.native_handle(), SHUT_RDWR);
+
+    while (!stop_thread_requested_) {
+      {
+        // serialize the teardown against a concurrent send() on the other thread
+        std::lock_guard<std::mutex> guard(write_mutex_);
+        std::cerr << "[Axiomatic DBG] reconnect: closing socket..." << std::endl;
+        closeSocket();
+        std::cerr << "[Axiomatic DBG] reconnect: closed" << std::endl;
+      }
+
+      std::cerr << "[Axiomatic DBG] reconnect: attempting openSocket()..." << std::endl;
+      if (openSocket()) {
+        connection_lost_ = false;
+        std::cerr << "[Axiomatic] Reconnected to " << ip_address_ << ":" << port_ << std::endl;
+        return true;
+      }
+
+      std::cerr << "[Axiomatic DBG] reconnect: openSocket() failed, retrying in " << RECONNECT_RETRY_INTERVAL_MS.count()
+                << " ms" << std::endl;
+      std::this_thread::sleep_for(RECONNECT_RETRY_INTERVAL_MS);
+    }
     return false;
   }
 
@@ -241,6 +289,9 @@ public:
     // run the I/O operations concurrently (this allows for new async operations in the future)
     tcp_io_context_.restart();
     tcp_io_context_.run();
+
+    std::cerr << "[Axiomatic DBG] receive: run() done ec=\"" << error_code.message() << "\" bytes=" << bytes_received
+              << std::endl;
 
     // check for timeout or other errors
     if (error_code == boost::asio::error::timed_out) {
@@ -411,9 +462,21 @@ public:
     // insert the can frame data
     full_message.insert(full_message.end(), frame_data.begin(), frame_data.end());
 
+    // don't touch the socket while the reception thread is reconnecting it
+    if (connection_lost_) {
+      return std::optional<AxiomaticAdapter::socket_error_string_t>("TCP Send Failed: connection lost (reconnecting)");
+    }
+
     try {
+      // lock out the reconnect teardown for the duration of the write
+      std::lock_guard<std::mutex> guard(write_mutex_);
+      std::cerr << "[Axiomatic DBG] send: writing " << full_message.size() << " bytes to tcp..." << std::endl;
       boost::asio::write(tcp_socket_, boost::asio::buffer(full_message.data(), full_message.size()));
+      std::cerr << "[Axiomatic DBG] send: write done" << std::endl;
     } catch (const std::exception & e) {
+      // flag the link lost; the reception thread owns the actual reconnect
+      connection_lost_ = true;
+      std::cerr << "[Axiomatic DBG] send: write threw: " << e.what() << std::endl;
       return std::optional<AxiomaticAdapter::socket_error_string_t>(std::string("TCP Send Failed: ") + e.what());
     }
     return std::nullopt;
@@ -432,6 +495,9 @@ public:
 private:
   static constexpr std::array<uint8_t, 7> AXIOMATIC_CAN_MESSAGE_HEADER = {'A', 'X', 'I', 'O', 0xBA, 0x36, 0x01};
   static constexpr std::chrono::milliseconds TCP_IP_CONNECTION_TIMEOUT_MS{3000};
+
+  // after a send() fails, retry openSocket() this often until reconnected
+  static constexpr std::chrono::milliseconds RECONNECT_RETRY_INTERVAL_MS{100};
 
   // receive buffer size for each async_receive call. Larger than the
   // protocol's per-message cap (256 bytes) by a wide margin
@@ -516,6 +582,13 @@ private:
   boost::asio::io_context tcp_io_context_;
   boost::asio::ip::tcp::socket tcp_socket_;
   TCPSocketState socket_state_{TCPSocketState::CLOSED};
+
+  // set by send() when a write fails; the reception thread reads it, reconnects,
+  // and clears it. Atomic because send() runs on a different thread.
+  std::atomic<bool> connection_lost_{false};
+
+  // guards send()'s write against the reception thread's reconnect teardown
+  std::mutex write_mutex_;
 
   std::thread tcp_receive_thread_;
   std::atomic<bool> thread_running_;
