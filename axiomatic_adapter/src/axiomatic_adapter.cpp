@@ -181,10 +181,7 @@ public:
         std::optional<AxiomaticAdapter::socket_error_string_t> error = receive(frame);
 
         if (!error) {
-          std::cerr << "[Axiomatic DBG] forwarding frame 0x" << std::hex << frame.get_id() << std::dec
-                    << " to socketcan..." << std::endl;
           receive_callback_(std::make_unique<polymath::socketcan::CanFrame>(frame));
-          std::cerr << "[Axiomatic DBG] ...forwarded to socketcan" << std::endl;
         } else {
           error_callback_(*error);
         }
@@ -289,9 +286,6 @@ public:
     // run the I/O operations concurrently (this allows for new async operations in the future)
     tcp_io_context_.restart();
     tcp_io_context_.run();
-
-    std::cerr << "[Axiomatic DBG] receive: run() done ec=\"" << error_code.message() << "\" bytes=" << bytes_received
-              << std::endl;
 
     // check for timeout or other errors
     if (error_code == boost::asio::error::timed_out) {
@@ -470,9 +464,7 @@ public:
     try {
       // lock out the reconnect teardown for the duration of the write
       std::lock_guard<std::mutex> guard(write_mutex_);
-      std::cerr << "[Axiomatic DBG] send: writing " << full_message.size() << " bytes to tcp..." << std::endl;
       boost::asio::write(tcp_socket_, boost::asio::buffer(full_message.data(), full_message.size()));
-      std::cerr << "[Axiomatic DBG] send: write done" << std::endl;
     } catch (const std::exception & e) {
       // flag the link lost; the reception thread owns the actual reconnect
       connection_lost_ = true;
