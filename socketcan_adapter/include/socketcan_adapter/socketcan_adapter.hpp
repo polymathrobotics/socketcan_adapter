@@ -44,7 +44,6 @@ enum class SocketState
 enum class FilterMode
 {
   /// TODO: Add additional filtermodes for "add" and "remove"
-  /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/6
   OVERWRITE = 0,
 };
 
@@ -88,7 +87,6 @@ public:
 
   /// Shared ptr to a vector is technically more efficient than a vector of shared_ptrs
   /// TODO: Vectors are harder to justify in MISRA, so might want to use Array
-  /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/7
   /// @brief Set a number of filters, vectorized
   /// @param filters INPUT shared ptr to a vector of can filters to set for the socket
   /// @return optional error string filled with an error message if any
@@ -111,7 +109,6 @@ public:
   std::optional<socket_error_string_t> receive(CanFrame & can_frame);
 
   /// TODO: Switch to unique ptr
-  /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/8
   /// @brief Receive with a reference to a CanFrame to fill
   /// @param frame OUTPUT CanFrame to fill via shared_ptr
   /// @return optional error string filled with an error message if any

@@ -215,11 +215,9 @@ void SocketcanBridgeNode::transmitCanFrame(can_msgs::msg::Frame::UniquePtr frame
   }
 
   /// TODO: Switch to unique_ptr
-  /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/8
   auto can_frame = std::make_shared<CanFrame>();
 
   /// TODO: Unnecessary branching, can we turn these functions into bools or something?
-  /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/8
   if (frame->is_extended) {
     can_frame->set_id_as_extended();
   }

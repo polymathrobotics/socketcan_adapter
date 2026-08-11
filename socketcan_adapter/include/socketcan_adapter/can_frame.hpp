@@ -173,7 +173,6 @@ public:
   const std::array<unsigned char, CAN_MAX_DLC> get_data() const;
 
   /// TODO: Do we need data packing and unpacking, or do we leave that somewhere else?
-  /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/5
 
 private:
   struct can_frame frame_{};

@@ -92,7 +92,6 @@ std::optional<SocketcanAdapter::socket_error_string_t> SocketcanAdapter::setFilt
   const filter_vector_t & filters, FilterMode /*mode*/)
 {
   /// TODO: mode unused
-  /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/6
   filter_list_ = filters;
   return sendFilters();
 }
@@ -101,7 +100,6 @@ std::optional<SocketcanAdapter::socket_error_string_t> SocketcanAdapter::setFilt
   const std::shared_ptr<filter_vector_t> filters, FilterMode /*mode*/)
 {
   /// TODO: mode unused
-  /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/6
   filter_list_ = *filters;
   return sendFilters();
 }
@@ -130,7 +128,6 @@ std::optional<SocketcanAdapter::socket_error_string_t> SocketcanAdapter::receive
   auto poll_timeout_ms = std::chrono::duration_cast<std::chrono::milliseconds>(receive_timeout_s_).count();
 
   /// TODO: We don't need to call duration cast every time we run this, we should store milliseconds instead
-  /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/8
   int return_value = poll(fds, NUM_SOCKETS_IN_ADAPTER, poll_timeout_ms);
 
   socket_error_string_t error_string;
@@ -210,7 +207,6 @@ std::optional<SocketcanAdapter::socket_error_string_t> SocketcanAdapter::send(co
   constexpr int32_t flags = 0;
 
   /// TODO: Add Timeout verification in case we need it for multithreading as in ros2_socketcan
-  /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/8
   const auto bytes_sent = ::send(socket_file_descriptor_, &raw_frame, sizeof(struct can_frame), flags);
 
   return (bytes_sent < 0)
@@ -226,7 +222,6 @@ std::optional<SocketcanAdapter::socket_error_string_t> SocketcanAdapter::send(
   constexpr int32_t flags = 0;
 
   /// TODO: Add Timeout verification in case we need it for multithreading as in ros2_socketcan
-  /// https://gitlab.com/polymathrobotics/polymath_core/-/issues/8
   const auto bytes_sent = ::send(socket_file_descriptor_, &raw_frame, sizeof(struct can_frame), flags);
 
   return (bytes_sent < 0)
