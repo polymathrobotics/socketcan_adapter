@@ -22,8 +22,8 @@ A codec takes bytes and `CanFrame`s only, so it can be used without a socket.
    Override `protocolId`, `encode` (build on `protocol::encodeMessage`), and `decodeMessage` (one message body; return `false` for Message IDs that carry no CAN frames).
    The base class `decode` splits the buffer into messages and calls `decodeMessage` for each.
 2. Add the source to the `axiomatic_adapter` library in `CMakeLists.txt`.
-3. Add an `AxiomaticModel` value, and its case in `makeCodec` and entry in `modelNames` in `src/axiomatic_codec.cpp`.
-4. Add the model to the round trip test and a decode test of the manual's example bytes in `test/axiomatic_codec_test.cpp`.
+3. Add its entry to `codecFactories` in `src/axiomatic_codec.cpp`.
+4. Add a decode test of the manual's example bytes in `test/axiomatic_codec_test.cpp`; the round trip test covers every entry in `codecFactories`.
 
 ## Usage
 ### Socketcan-Axiomatic Bridge
@@ -66,7 +66,7 @@ polymath::can::AxiomaticAdapter adapter(
   [](polymath::can::AxiomaticAdapter::socket_error_string_t /*error*/) { /*do nothing*/ },
   receive_timeout_ms,
   /*tcp_nodelay=*/true,  // optional, defaults to true; see below
-  polymath::can::makeCodec(polymath::can::AxiomaticModel::AX142100A)  // optional, defaults to AX140900
+  std::make_unique<polymath::can::ax142100a::Codec>()  // optional, defaults to ax140900::Codec
 );
 
 // open the socket

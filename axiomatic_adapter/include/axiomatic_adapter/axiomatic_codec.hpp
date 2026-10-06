@@ -28,13 +28,6 @@
 namespace polymath::can
 {
 
-/// @brief Supported Axiomatic Ethernet/CAN converters
-enum class AxiomaticModel
-{
-  AX140900,
-  AX142100A,
-};
-
 /// @class polymath::can::AxiomaticCodec
 /// @brief Wire format of one converter model.
 /// A model overrides protocolId, encode, and decodeMessage.
@@ -62,11 +55,10 @@ protected:
   virtual bool decodeMessage(const protocol::MessageView & message, protocol::DecodeResult & result) const = 0;
 };
 
-/// @brief Construct the codec for a model
-std::unique_ptr<const AxiomaticCodec> makeCodec(AxiomaticModel model);
+using CodecFactory = std::unique_ptr<const AxiomaticCodec> (*)();
 
-/// @brief Lower-case model names, e.g. "ax142100a", for command line and configuration parsing
-std::map<std::string, AxiomaticModel> modelNames();
+/// @brief Factory for every supported model, keyed by lower-case model name, e.g. "ax142100a"
+std::map<std::string, CodecFactory> codecFactories();
 
 }  // namespace polymath::can
 

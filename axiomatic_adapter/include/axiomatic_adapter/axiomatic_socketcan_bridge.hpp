@@ -19,6 +19,7 @@
 #include <string>
 
 #include "axiomatic_adapter/axiomatic_adapter.hpp"
+#include "axiomatic_adapter/models/ax140900.hpp"
 #include "socketcan_adapter/can_frame.hpp"
 #include "socketcan_adapter/socketcan_adapter.hpp"
 
@@ -38,14 +39,14 @@ public:
   /// @param tcp_nodelay when true (default), sets TCP_NODELAY on the underlying
   ///                    AxiomaticAdapter socket. See AxiomaticAdapter for the
   ///                    full tradeoff discussion.
-  /// @param codec wire format of the converter model, e.g. makeCodec(AxiomaticModel::AX142100A); must not be null
+  /// @param codec wire format of the converter model, e.g. std::make_unique<ax142100a::Codec>(); must not be null
   AxiomaticSocketcanBridge(
     const std::string & can_interface_name,
     const std::string & ip,
     const std::string & port,
     bool verbose = false,
     bool tcp_nodelay = true,
-    std::unique_ptr<const AxiomaticCodec> codec = makeCodec(AxiomaticModel::AX140900));
+    std::unique_ptr<const AxiomaticCodec> codec = std::make_unique<ax140900::Codec>());
 
   /// @brief Destruct axiomatic socketcan bridge
   ~AxiomaticSocketcanBridge();

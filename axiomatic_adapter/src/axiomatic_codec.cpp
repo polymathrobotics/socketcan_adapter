@@ -16,7 +16,6 @@
 
 #include <map>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -40,22 +39,20 @@ protocol::DecodeResult AxiomaticCodec::decode(const uint8_t * data, size_t size)
   return result;
 }
 
-std::unique_ptr<const AxiomaticCodec> makeCodec(AxiomaticModel model)
+namespace
 {
-  switch (model) {
-    case AxiomaticModel::AX140900:
-      return std::make_unique<ax140900::Codec>();
-    case AxiomaticModel::AX142100A:
-      return std::make_unique<ax142100a::Codec>();
-  }
-  throw std::invalid_argument("Unknown AxiomaticModel " + std::to_string(static_cast<int>(model)));
+template <typename CodecT>
+std::unique_ptr<const AxiomaticCodec> make()
+{
+  return std::make_unique<CodecT>();
 }
+}  // namespace
 
-std::map<std::string, AxiomaticModel> modelNames()
+std::map<std::string, CodecFactory> codecFactories()
 {
   return {
-    {"ax140900", AxiomaticModel::AX140900},
-    {"ax142100a", AxiomaticModel::AX142100A},
+    {"ax140900", &make<ax140900::Codec>},
+    {"ax142100a", &make<ax142100a::Codec>},
   };
 }
 

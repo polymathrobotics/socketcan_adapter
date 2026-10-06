@@ -25,6 +25,7 @@
 #include <string>
 
 #include "axiomatic_adapter/axiomatic_codec.hpp"
+#include "axiomatic_adapter/models/ax140900.hpp"
 #include "socketcan_adapter/can_frame.hpp"
 
 namespace polymath::can
@@ -65,7 +66,7 @@ public:
   ///                    on both sides, more switch/NIC PPS load, and worse bytes-on-wire
   ///                    efficiency for bulk transfers). Better for real-time, but can, in constrained
   ///                    resource environments, cause issues
-  /// @param codec wire format of the converter model, e.g. makeCodec(AxiomaticModel::AX142100A); must not be null
+  /// @param codec wire format of the converter model, e.g. std::make_unique<ax142100a::Codec>(); must not be null
   AxiomaticAdapter(
     const std::string & ip_address,
     const std::string & port,
@@ -75,7 +76,7 @@ public:
       [](socket_error_string_t /*error*/) { /*do nothing*/ },
     const std::chrono::milliseconds & receive_timeout_ms = AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS,
     bool tcp_nodelay = true,
-    std::unique_ptr<const AxiomaticCodec> codec = makeCodec(AxiomaticModel::AX140900));
+    std::unique_ptr<const AxiomaticCodec> codec = std::make_unique<ax140900::Codec>());
 
   /// @brief Destructor for AxiomaticAdapter
   virtual ~AxiomaticAdapter();
