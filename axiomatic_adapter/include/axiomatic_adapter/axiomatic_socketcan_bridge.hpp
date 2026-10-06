@@ -15,15 +15,15 @@
 #ifndef AXIOMATIC_ADAPTER__AXIOMATIC_SOCKETCAN_BRIDGE_NODE_HPP_
 #define AXIOMATIC_ADAPTER__AXIOMATIC_SOCKETCAN_BRIDGE_NODE_HPP_
 
+#include <memory>
 #include <string>
 
 #include "axiomatic_adapter/axiomatic_adapter.hpp"
+#include "axiomatic_adapter/models/ax140900.hpp"
 #include "socketcan_adapter/can_frame.hpp"
 #include "socketcan_adapter/socketcan_adapter.hpp"
 
-namespace polymath
-{
-namespace can
+namespace polymath::can
 {
 
 /// @class polymath::can::AxiomaticSocketcanBridge
@@ -39,12 +39,14 @@ public:
   /// @param tcp_nodelay when true (default), sets TCP_NODELAY on the underlying
   ///                    AxiomaticAdapter socket. See AxiomaticAdapter for the
   ///                    full tradeoff discussion.
+  /// @param model converter model, e.g. std::make_unique<ax142100a::Ax142100a>(); must not be null
   AxiomaticSocketcanBridge(
     const std::string & can_interface_name,
     const std::string & ip,
     const std::string & port,
     bool verbose = false,
-    bool tcp_nodelay = true);
+    bool tcp_nodelay = true,
+    std::unique_ptr<const AxiomaticModel> model = std::make_unique<ax140900::Ax140900>());
 
   /// @brief Destruct axiomatic socketcan bridge
   ~AxiomaticSocketcanBridge();
@@ -75,7 +77,6 @@ private:
   void ethcanReceiveCallback(std::unique_ptr<const polymath::socketcan::CanFrame> frame);
 };
 
-}  // namespace can
-}  // namespace polymath
+}  // namespace polymath::can
 
 #endif  // AXIOMATIC_ADAPTER__AXIOMATIC_SOCKETCAN_BRIDGE_NODE_HPP_

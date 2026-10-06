@@ -24,11 +24,11 @@
 #include <optional>
 #include <string>
 
+#include "axiomatic_adapter/axiomatic_model.hpp"
+#include "axiomatic_adapter/models/ax140900.hpp"
 #include "socketcan_adapter/can_frame.hpp"
 
-namespace polymath
-{
-namespace can
+namespace polymath::can
 {
 
 /// @brief State of TCP socket, error, open or closed
@@ -66,6 +66,7 @@ public:
   ///                    on both sides, more switch/NIC PPS load, and worse bytes-on-wire
   ///                    efficiency for bulk transfers). Better for real-time, but can, in constrained
   ///                    resource environments, cause issues
+  /// @param model converter model, e.g. std::make_unique<ax142100a::Ax142100a>(); must not be null
   AxiomaticAdapter(
     const std::string & ip_address,
     const std::string & port,
@@ -74,7 +75,8 @@ public:
     const std::function<void(socket_error_string_t error)> && error_callback_function =
       [](socket_error_string_t /*error*/) { /*do nothing*/ },
     const std::chrono::milliseconds & receive_timeout_ms = AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS,
-    bool tcp_nodelay = true);
+    bool tcp_nodelay = true,
+    std::unique_ptr<const AxiomaticModel> model = std::make_unique<ax140900::Ax140900>());
 
   /// @brief Destructor for AxiomaticAdapter
   virtual ~AxiomaticAdapter();
@@ -129,7 +131,6 @@ private:
   class AxiomaticAdapterImpl;
   std::unique_ptr<AxiomaticAdapterImpl> pimpl_;
 };
-}  // namespace can
-}  // namespace polymath
+}  // namespace polymath::can
 
 #endif  // AXIOMATIC_ADAPTER__AXIOMATIC_ADAPTER_HPP_
