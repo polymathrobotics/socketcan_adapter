@@ -24,11 +24,11 @@
 #else
   #include <catch2/catch.hpp>  // v2
 #endif
-#include "axiomatic_adapter/axiomatic_adapter.hpp"
 #include "axiomatic_adapter/axiomatic_codec.hpp"
 #include "axiomatic_adapter/models/ax140900.hpp"
 #include "axiomatic_adapter/models/ax142100a.hpp"
 
+using polymath::can::AxiomaticModel;
 using polymath::socketcan::CanFrame;
 using polymath::socketcan::IdType;
 
@@ -142,9 +142,9 @@ TEST_CASE("Codecs round trip", "[codec]")
     makeFrame(0x7FF, false, {}),
   };
 
-  for (const auto & name : polymath::can::modelNames()) {
+  for (const auto & [name, model] : polymath::can::modelNames()) {
     INFO("model " << name);
-    const auto codec = polymath::can::makeCodec(name);
+    const auto codec = polymath::can::makeCodec(model);
     std::vector<uint8_t> stream;
     for (const auto & frame : frames) {
       stream = concat(stream, codec->encode(frame));
@@ -174,25 +174,17 @@ TEST_CASE("Codecs drop buffers shorter than a header", "[codec]")
   REQUIRE(1 == result.diagnostics.size());
 }
 
-TEST_CASE("Model names map to their codecs", "[codec]")
+TEST_CASE("Models map to their codecs", "[codec]")
 {
-  REQUIRE(2 == polymath::can::modelNames().size());
-  REQUIRE(nullptr != dynamic_cast<const polymath::can::ax140900::Codec *>(polymath::can::makeCodec("ax140900").get()));
+  const auto names = polymath::can::modelNames();
+  REQUIRE(2 == names.size());
+  REQUIRE(AxiomaticModel::AX140900 == names.at("ax140900"));
+  REQUIRE(AxiomaticModel::AX142100A == names.at("ax142100a"));
   REQUIRE(
-    nullptr != dynamic_cast<const polymath::can::ax142100a::Codec *>(polymath::can::makeCodec("ax142100a").get()));
-  REQUIRE_THROWS_AS(polymath::can::makeCodec("bogus"), std::invalid_argument);
-}
-
-TEST_CASE("AxiomaticAdapter rejects a null codec", "[codec]")
-{
-  REQUIRE_THROWS_AS(
-    polymath::can::AxiomaticAdapter(
-      "192.168.0.34",
-      "4000",
-      [](std::unique_ptr<const CanFrame> /*frame*/) {},
-      [](polymath::can::AxiomaticAdapter::socket_error_string_t /*error*/) {},
-      polymath::can::AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS,
-      true,
-      nullptr),
-    std::invalid_argument);
+    nullptr !=
+    dynamic_cast<const polymath::can::ax140900::Codec *>(polymath::can::makeCodec(AxiomaticModel::AX140900).get()));
+  REQUIRE(
+    nullptr !=
+    dynamic_cast<const polymath::can::ax142100a::Codec *>(polymath::can::makeCodec(AxiomaticModel::AX142100A).get()));
+  REQUIRE_THROWS_AS(polymath::can::makeCodec(static_cast<AxiomaticModel>(-1)), std::invalid_argument);
 }

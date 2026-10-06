@@ -23,7 +23,6 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
-#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -46,7 +45,7 @@ public:
     const std::function<void(AxiomaticAdapter::socket_error_string_t error)> && error_callback_function,
     const std::chrono::milliseconds & receive_timeout_ms,
     bool tcp_nodelay,
-    std::unique_ptr<const AxiomaticCodec> codec)
+    AxiomaticModel model)
   : tcp_io_context_()
   , tcp_socket_(tcp_io_context_)
   , ip_address_(ip_address)
@@ -56,12 +55,8 @@ public:
   , receive_timeout_ms_(receive_timeout_ms)
   , rx_buffer_(RECEIVE_BUFFER_SIZE, 0)
   , tcp_nodelay_(tcp_nodelay)
-  , codec_(std::move(codec))
-  {
-    if (!codec_) {
-      throw std::invalid_argument("AxiomaticAdapter requires a codec");
-    }
-  }
+  , codec_(makeCodec(model))
+  {}
 
   ~AxiomaticAdapterImpl()
   {
@@ -341,7 +336,7 @@ private:
   // when true, disable Nagle's algorithm on the TCP socket after connect
   bool tcp_nodelay_;
 
-  std::unique_ptr<const AxiomaticCodec> codec_;
+  const std::unique_ptr<const AxiomaticCodec> codec_;
 };
 
 AxiomaticAdapter::AxiomaticAdapter(
@@ -351,7 +346,7 @@ AxiomaticAdapter::AxiomaticAdapter(
   const std::function<void(AxiomaticAdapter::socket_error_string_t error)> && error_callback_function,
   const std::chrono::milliseconds & receive_timeout_ms,
   bool tcp_nodelay,
-  std::unique_ptr<const AxiomaticCodec> codec)
+  AxiomaticModel model)
 : pimpl_(std::make_unique<AxiomaticAdapterImpl>(
     ip_address,
     port,
@@ -359,7 +354,7 @@ AxiomaticAdapter::AxiomaticAdapter(
     std::move(error_callback_function),
     receive_timeout_ms,
     tcp_nodelay,
-    std::move(codec)))
+    model))
 {}
 
 AxiomaticAdapter::~AxiomaticAdapter()

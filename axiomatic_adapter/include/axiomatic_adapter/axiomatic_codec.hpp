@@ -17,6 +17,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,6 +27,13 @@
 
 namespace polymath::can
 {
+
+/// @brief Supported Axiomatic Ethernet/CAN converters
+enum class AxiomaticModel
+{
+  AX140900,
+  AX142100A,
+};
 
 /// @class polymath::can::AxiomaticCodec
 /// @brief Wire format of one converter model.
@@ -54,12 +62,12 @@ protected:
   virtual bool decodeMessage(const protocol::MessageView & message, protocol::DecodeResult & result) const = 0;
 };
 
-/// @brief Construct the codec for a lower-case model name, e.g. "ax142100a"
-/// @throws std::invalid_argument for a name not in modelNames()
-std::unique_ptr<const AxiomaticCodec> makeCodec(const std::string & model);
+/// @brief Construct the codec for model; never null
+/// @throws std::invalid_argument for a value outside AxiomaticModel
+std::unique_ptr<const AxiomaticCodec> makeCodec(AxiomaticModel model);
 
-/// @brief Every model name makeCodec accepts
-std::vector<std::string> modelNames();
+/// @brief Lower-case model names, e.g. "ax142100a", for command line and configuration parsing
+std::map<std::string, AxiomaticModel> modelNames();
 
 }  // namespace polymath::can
 

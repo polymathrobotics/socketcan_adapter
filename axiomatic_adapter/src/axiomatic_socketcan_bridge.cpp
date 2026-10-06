@@ -17,7 +17,6 @@
 #include <iostream>
 #include <memory>
 #include <string>
-#include <utility>
 
 namespace polymath::can
 {
@@ -28,7 +27,7 @@ AxiomaticSocketcanBridge::AxiomaticSocketcanBridge(
   const std::string & port,
   bool verbose,
   bool tcp_nodelay,
-  std::unique_ptr<const AxiomaticCodec> codec)
+  AxiomaticModel model)
 : socketcan_adapter_(can_interface_name)
 , axiomatic_adapter_(
     ip,
@@ -37,7 +36,7 @@ AxiomaticSocketcanBridge::AxiomaticSocketcanBridge(
     [](AxiomaticAdapter::socket_error_string_t /*error*/) { /* no-op */ },
     AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS,
     tcp_nodelay,
-    std::move(codec))
+    model)
 , verbose_(verbose)
 {
   socketcan_adapter_.setOnReceiveCallback(
