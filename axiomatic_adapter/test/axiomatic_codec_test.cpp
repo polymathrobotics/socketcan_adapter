@@ -142,9 +142,9 @@ TEST_CASE("Codecs round trip", "[codec]")
     makeFrame(0x7FF, false, {}),
   };
 
-  for (const auto & [name, factory] : polymath::can::codecFactories()) {
+  for (const auto & name : polymath::can::modelNames()) {
     INFO("model " << name);
-    const auto codec = factory();
+    const auto codec = polymath::can::makeCodec(name);
     std::vector<uint8_t> stream;
     for (const auto & frame : frames) {
       stream = concat(stream, codec->encode(frame));
@@ -176,10 +176,11 @@ TEST_CASE("Codecs drop buffers shorter than a header", "[codec]")
 
 TEST_CASE("Model names map to their codecs", "[codec]")
 {
-  const auto factories = polymath::can::codecFactories();
-  REQUIRE(2 == factories.size());
-  REQUIRE(nullptr != dynamic_cast<const polymath::can::ax140900::Codec *>(factories.at("ax140900")().get()));
-  REQUIRE(nullptr != dynamic_cast<const polymath::can::ax142100a::Codec *>(factories.at("ax142100a")().get()));
+  REQUIRE(2 == polymath::can::modelNames().size());
+  REQUIRE(nullptr != dynamic_cast<const polymath::can::ax140900::Codec *>(polymath::can::makeCodec("ax140900").get()));
+  REQUIRE(
+    nullptr != dynamic_cast<const polymath::can::ax142100a::Codec *>(polymath::can::makeCodec("ax142100a").get()));
+  REQUIRE_THROWS_AS(polymath::can::makeCodec("bogus"), std::invalid_argument);
 }
 
 TEST_CASE("AxiomaticAdapter rejects a null codec", "[codec]")

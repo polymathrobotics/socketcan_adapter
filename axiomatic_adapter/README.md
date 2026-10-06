@@ -23,7 +23,7 @@ A codec takes bytes and `CanFrame`s only, so it can be used without a socket.
    The base class `decode` splits the buffer into messages and calls `decodeMessage` for each.
 2. Add the source to the `axiomatic_adapter` library in `CMakeLists.txt`.
 3. Add its entry to `codecFactories` in `src/axiomatic_codec.cpp`.
-4. Add a decode test of the manual's example bytes in `test/axiomatic_codec_test.cpp`; the round trip test covers every entry in `codecFactories`.
+4. Add a decode test of the manual's example bytes in `test/axiomatic_codec_test.cpp`; the round trip test covers every name in `modelNames`.
 
 ## Usage
 ### Socketcan-Axiomatic Bridge

@@ -16,8 +16,10 @@
 
 #include <map>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "axiomatic_adapter/models/ax140900.hpp"
 #include "axiomatic_adapter/models/ax142100a.hpp"
@@ -41,12 +43,13 @@ protocol::DecodeResult AxiomaticCodec::decode(const uint8_t * data, size_t size)
 
 namespace
 {
+using CodecFactory = std::unique_ptr<const AxiomaticCodec> (*)();
+
 template <typename CodecT>
 std::unique_ptr<const AxiomaticCodec> make()
 {
   return std::make_unique<CodecT>();
 }
-}  // namespace
 
 std::map<std::string, CodecFactory> codecFactories()
 {
@@ -54,6 +57,26 @@ std::map<std::string, CodecFactory> codecFactories()
     {"ax140900", &make<ax140900::Codec>},
     {"ax142100a", &make<ax142100a::Codec>},
   };
+}
+}  // namespace
+
+std::unique_ptr<const AxiomaticCodec> makeCodec(const std::string & model)
+{
+  const auto factories = codecFactories();
+  const auto factory = factories.find(model);
+  if (factories.end() == factory) {
+    throw std::invalid_argument("Unknown Axiomatic model \"" + model + "\"");
+  }
+  return factory->second();
+}
+
+std::vector<std::string> modelNames()
+{
+  std::vector<std::string> names;
+  for (const auto & [name, factory] : codecFactories()) {
+    names.push_back(name);
+  }
+  return names;
 }
 
 }  // namespace polymath::can

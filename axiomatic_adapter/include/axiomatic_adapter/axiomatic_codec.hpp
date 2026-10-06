@@ -17,7 +17,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -55,10 +54,12 @@ protected:
   virtual bool decodeMessage(const protocol::MessageView & message, protocol::DecodeResult & result) const = 0;
 };
 
-using CodecFactory = std::unique_ptr<const AxiomaticCodec> (*)();
+/// @brief Construct the codec for a lower-case model name, e.g. "ax142100a"
+/// @throws std::invalid_argument for a name not in modelNames()
+std::unique_ptr<const AxiomaticCodec> makeCodec(const std::string & model);
 
-/// @brief Factory for every supported model, keyed by lower-case model name, e.g. "ax142100a"
-std::map<std::string, CodecFactory> codecFactories();
+/// @brief Every model name makeCodec accepts
+std::vector<std::string> modelNames();
 
 }  // namespace polymath::can
 

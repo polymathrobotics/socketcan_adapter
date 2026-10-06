@@ -65,7 +65,7 @@ void configureArguments(
     tcp_nodelay,
     "Disable TCP_NODELAY (re-enable Nagle's algorithm). Default is on; see the AxiomaticAdapter docs for tradeoffs.");
   app.add_option("-m,--model", model, "Axiomatic converter model (default: ax140900)")
-    ->transform(CLI::IsMember(polymath::can::codecFactories(), CLI::ignore_case))
+    ->transform(CLI::IsMember(polymath::can::modelNames(), CLI::ignore_case))
     ->default_val("ax140900");
 }
 
@@ -81,7 +81,7 @@ int main(int argc, char * argv[])
   CLI11_PARSE(app, argc, argv);
 
   polymath::can::AxiomaticSocketcanBridge bridge(
-    can_interface, ip, port, verbose, tcp_nodelay, polymath::can::codecFactories().at(model)());
+    can_interface, ip, port, verbose, tcp_nodelay, polymath::can::makeCodec(model));
 
   std::cout << "Axiomatic Socketcan Bridge configuring..." << std::endl;
 
