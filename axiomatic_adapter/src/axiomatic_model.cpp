@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "axiomatic_adapter/axiomatic_codec.hpp"
+#include "axiomatic_adapter/axiomatic_model.hpp"
 
 #include <map>
 #include <memory>
@@ -27,7 +27,7 @@
 namespace polymath::can
 {
 
-protocol::DecodeResult AxiomaticCodec::decode(const uint8_t * data, size_t size) const
+protocol::DecodeResult AxiomaticModel::decode(const uint8_t * data, size_t size) const
 {
   protocol::ParsedMessages parsed = protocol::parseMessages(protocolId(), data, size);
   protocol::DecodeResult result{{}, std::move(parsed.diagnostics)};
@@ -41,23 +41,42 @@ protocol::DecodeResult AxiomaticCodec::decode(const uint8_t * data, size_t size)
   return result;
 }
 
-std::unique_ptr<const AxiomaticCodec> makeCodec(AxiomaticModel model)
+namespace
 {
-  switch (model) {
-    case AxiomaticModel::AX140900:
-      return std::make_unique<ax140900::Codec>();
-    case AxiomaticModel::AX142100A:
-      return std::make_unique<ax142100a::Codec>();
-  }
-  throw std::invalid_argument("Unknown AxiomaticModel " + std::to_string(static_cast<int>(model)));
+using ModelFactory = std::unique_ptr<const AxiomaticModel> (*)();
+
+template <typename ModelT>
+std::unique_ptr<const AxiomaticModel> make()
+{
+  return std::make_unique<ModelT>();
 }
 
-std::map<std::string, AxiomaticModel> modelNames()
+std::map<std::string, ModelFactory> modelFactories()
 {
   return {
-    {"ax140900", AxiomaticModel::AX140900},
-    {"ax142100a", AxiomaticModel::AX142100A},
+    {"ax140900", &make<ax140900::Ax140900>},
+    {"ax142100a", &make<ax142100a::Ax142100a>},
   };
+}
+}  // namespace
+
+std::unique_ptr<const AxiomaticModel> makeModel(const std::string & model)
+{
+  const auto factories = modelFactories();
+  const auto factory = factories.find(model);
+  if (factories.end() == factory) {
+    throw std::invalid_argument("Unknown Axiomatic model \"" + model + "\"");
+  }
+  return factory->second();
+}
+
+std::vector<std::string> modelNames()
+{
+  std::vector<std::string> names;
+  for (const auto & [name, factory] : modelFactories()) {
+    names.push_back(name);
+  }
+  return names;
 }
 
 }  // namespace polymath::can

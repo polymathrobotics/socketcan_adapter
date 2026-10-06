@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef AXIOMATIC_ADAPTER__AXIOMATIC_CODEC_HPP_
-#define AXIOMATIC_ADAPTER__AXIOMATIC_CODEC_HPP_
+#ifndef AXIOMATIC_ADAPTER__AXIOMATIC_MODEL_HPP_
+#define AXIOMATIC_ADAPTER__AXIOMATIC_MODEL_HPP_
 
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -28,21 +27,14 @@
 namespace polymath::can
 {
 
-/// @brief Supported Axiomatic Ethernet/CAN converters
-enum class AxiomaticModel
-{
-  AX140900,
-  AX142100A,
-};
-
-/// @class polymath::can::AxiomaticCodec
-/// @brief Wire format of one converter model.
-/// A model overrides protocolId, encode, and decodeMessage.
+/// @class polymath::can::AxiomaticModel
+/// @brief One Axiomatic converter model and its wire format.
+/// Subclasses override protocolId, encode, and decodeMessage.
 /// Methods are const and keep no state between calls; one instance may be shared across threads.
-class AxiomaticCodec
+class AxiomaticModel
 {
 public:
-  virtual ~AxiomaticCodec() = default;
+  virtual ~AxiomaticModel() = default;
 
   /// @brief Encode one CAN frame as one complete protocol message
   virtual std::vector<uint8_t> encode(const polymath::socketcan::CanFrame & frame) const = 0;
@@ -62,13 +54,13 @@ protected:
   virtual bool decodeMessage(const protocol::MessageView & message, protocol::DecodeResult & result) const = 0;
 };
 
-/// @brief Construct the codec for model; never null
-/// @throws std::invalid_argument for a value outside AxiomaticModel
-std::unique_ptr<const AxiomaticCodec> makeCodec(AxiomaticModel model);
+/// @brief Construct the model with a lower-case name, e.g. "ax142100a"
+/// @throws std::invalid_argument for a name not in modelNames()
+std::unique_ptr<const AxiomaticModel> makeModel(const std::string & model);
 
-/// @brief Lower-case model names, e.g. "ax142100a", for command line and configuration parsing
-std::map<std::string, AxiomaticModel> modelNames();
+/// @brief Every model name makeModel accepts
+std::vector<std::string> modelNames();
 
 }  // namespace polymath::can
 
-#endif  // AXIOMATIC_ADAPTER__AXIOMATIC_CODEC_HPP_
+#endif  // AXIOMATIC_ADAPTER__AXIOMATIC_MODEL_HPP_

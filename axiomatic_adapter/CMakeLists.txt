@@ -47,7 +47,7 @@ find_package(socketcan_adapter REQUIRED)
 # Axiomatic Adapter Library
 add_library(axiomatic_adapter SHARED
   src/axiomatic_adapter.cpp
-  src/axiomatic_codec.cpp
+  src/axiomatic_model.cpp
   src/axiomatic_protocol.cpp
   src/models/ax140900.cpp
   src/models/ax142100a.cpp
@@ -104,12 +104,12 @@ if(BUILD_TESTING)
   endif()
   include(Catch OPTIONAL)
 
-  add_executable(test_axiomatic_codec test/axiomatic_codec_test.cpp)
-  target_link_libraries(test_axiomatic_codec PRIVATE axiomatic_adapter Catch2::Catch2WithMain)
+  add_executable(test_axiomatic_model test/axiomatic_model_test.cpp)
+  target_link_libraries(test_axiomatic_model PRIVATE axiomatic_adapter Catch2::Catch2WithMain)
   if(COMMAND catch_discover_tests)
-    catch_discover_tests(test_axiomatic_codec)
+    catch_discover_tests(test_axiomatic_model)
   else()
-    add_test(NAME test_axiomatic_codec COMMAND test_axiomatic_codec)
+    add_test(NAME test_axiomatic_model COMMAND test_axiomatic_model)
   endif()
 
   option(HARDWARE_CONNECTED "Enable tests that require a connected Axiomatic device and CAN interface" OFF)

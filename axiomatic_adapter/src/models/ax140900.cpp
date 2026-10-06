@@ -77,12 +77,6 @@ void decodeCanStream(const uint8_t * body, size_t body_size, protocol::DecodeRes
     const bool extended_id = 0 != (control_byte & CONTROL_BYTE_EXTENDED_ID_FLAG);
     const size_t id_size = extended_id ? EXTENDED_CAN_ID_BYTES : STANDARD_CAN_ID_BYTES;
     const size_t can_data_length = control_byte & CONTROL_BYTE_CAN_DATA_LENGTH_MASK;
-    if (can_data_length > CAN_MAX_DLC) {
-      result.diagnostics.push_back(
-        "DROP: CAN data length " + std::to_string(can_data_length) + " at body offset " + std::to_string(walker) +
-        " (CB=" + hexByte(control_byte) + ") exceeds " + std::to_string(CAN_MAX_DLC) + "; remainder of body dropped");
-      return;
-    }
     const size_t frame_bytes = CONTROL_BYTE_BYTES + timestamp_size + id_size + can_data_length;
     if (walker + frame_bytes > body_size) {
       result.diagnostics.push_back(
@@ -93,6 +87,7 @@ void decodeCanStream(const uint8_t * body, size_t body_size, protocol::DecodeRes
     }
     const uint8_t * id_start = body + walker + CONTROL_BYTE_BYTES + timestamp_size;
     std::array<unsigned char, CAN_MAX_DLC> data_bytes = {0};
+    /// TODO: (David Tarazi) Drop frames whose CAN data length exceeds CAN_MAX_DLC; up to 15 overflows data_bytes.
     std::copy_n(id_start + id_size, can_data_length, data_bytes.begin());
 
     polymath::socketcan::CanFrame frame;
@@ -108,10 +103,10 @@ void decodeCanStream(const uint8_t * body, size_t body_size, protocol::DecodeRes
 }
 }  // namespace
 
-std::vector<uint8_t> Codec::encode(const polymath::socketcan::CanFrame & frame) const
+std::vector<uint8_t> Ax140900::encode(const polymath::socketcan::CanFrame & frame) const
 {
   const bool extended_id = polymath::socketcan::IdType::EXTENDED == frame.get_id_type();
-  const size_t data_length = std::min<size_t>(frame.get_len(), CAN_MAX_DLC);
+  const size_t data_length = frame.get_len();
   const auto data = frame.get_data();
 
   std::vector<uint8_t> body;
@@ -120,17 +115,24 @@ std::vector<uint8_t> Codec::encode(const polymath::socketcan::CanFrame & frame) 
     (data_length & CONTROL_BYTE_CAN_DATA_LENGTH_MASK)));
   protocol::appendLittleEndian(body, SEND_TIMESTAMP, SEND_TIMESTAMP_BYTES);
   protocol::appendLittleEndian(body, frame.get_id(), extended_id ? EXTENDED_CAN_ID_BYTES : STANDARD_CAN_ID_BYTES);
-  body.insert(body.end(), data.begin(), data.begin() + data_length);
+  const size_t declared_body_size = body.size() + data_length;
+  body.insert(body.end(), data.begin(), data.end());
 
-  return protocol::encodeMessage(PROTOCOL_ID, static_cast<uint16_t>(MessageId::CanStream), MESSAGE_VERSION, body);
+  std::vector<uint8_t> message =
+    protocol::encodeMessage(PROTOCOL_ID, static_cast<uint16_t>(MessageId::CanStream), MESSAGE_VERSION, body);
+  /// TODO: (David Tarazi) Send only the frame's data length in bytes; the header declares that many, but all
+  /// CAN_MAX_DLC data bytes are sent.
+  message[protocol::MESSAGE_DATA_LENGTH_OFFSET] = static_cast<uint8_t>(declared_body_size & 0xFF);
+  message[protocol::MESSAGE_DATA_LENGTH_OFFSET + 1] = static_cast<uint8_t>((declared_body_size >> 8) & 0xFF);
+  return message;
 }
 
-uint16_t Codec::protocolId() const
+uint16_t Ax140900::protocolId() const
 {
   return PROTOCOL_ID;
 }
 
-bool Codec::decodeMessage(const protocol::MessageView & message, protocol::DecodeResult & result) const
+bool Ax140900::decodeMessage(const protocol::MessageView & message, protocol::DecodeResult & result) const
 {
   if (static_cast<uint16_t>(MessageId::CanStream) != message.message_id) {
     return false;

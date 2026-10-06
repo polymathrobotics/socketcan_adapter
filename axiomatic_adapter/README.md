@@ -13,17 +13,17 @@ https://www.notion.so/polymathrobotics/Axiomatic-CAN-to-Ethernet-Converter-08e07
 | `ax142100a` | [AX142100A Protocol Converter, Ethernet/RS-422/2x RS-232/CAN](https://www.axiomatic.com/product/protocol-converter-ethernet-rs-422-2-rs-232-can-sae-j1939-ax142100a/) | [UMAX142100A](https://www.axiomatic.com/wp-content/uploads/UMAX142100A.pdf), section 4.2 |
 
 Every model shares the 11-byte `AXIO` message header in `axiomatic_protocol.hpp`.
-Each model is a subclass of `AxiomaticCodec` (`axiomatic_codec.hpp`) in `include/axiomatic_adapter/models/` and `src/models/`.
-A codec takes bytes and `CanFrame`s only, so it can be used without a socket.
+Each model is a subclass of `AxiomaticModel` (`axiomatic_model.hpp`) in `include/axiomatic_adapter/models/` and `src/models/`.
+A model takes bytes and `CanFrame`s only, so it can be used without a socket.
 
 ### Adding a model
 
-1. Add `include/axiomatic_adapter/models/<model>.hpp` and `src/models/<model>.cpp` with a `<model>::Codec` deriving `AxiomaticCodec`.
+1. Add `include/axiomatic_adapter/models/<model>.hpp` and `src/models/<model>.cpp` with a `<model>::<Model>` class deriving `AxiomaticModel`.
    Override `protocolId`, `encode` (build on `protocol::encodeMessage`), and `decodeMessage` (one message body; return `false` for Message IDs that carry no CAN frames).
    The base class `decode` splits the buffer into messages and calls `decodeMessage` for each.
 2. Add the source to the `axiomatic_adapter` library in `CMakeLists.txt`.
-3. Add an `AxiomaticModel` value in `axiomatic_codec.hpp`, and its case in `makeCodec` and entry in `modelNames` in `src/axiomatic_codec.cpp`.
-4. Add a decode test of the manual's example bytes in `test/axiomatic_codec_test.cpp`; the round trip test covers every model in `modelNames`.
+3. Add its entry to `modelFactories` in `src/axiomatic_model.cpp`.
+4. Add a decode test of the manual's example bytes in `test/axiomatic_model_test.cpp`; the round trip test covers every name in `modelNames`.
 
 ## Usage
 ### Socketcan-Axiomatic Bridge
@@ -66,7 +66,7 @@ polymath::can::AxiomaticAdapter adapter(
   [](polymath::can::AxiomaticAdapter::socket_error_string_t /*error*/) { /*do nothing*/ },
   receive_timeout_ms,
   /*tcp_nodelay=*/true,  // optional, defaults to true; see below
-  polymath::can::AxiomaticModel::AX142100A  // optional, defaults to AX140900
+  std::make_unique<polymath::can::ax142100a::Ax142100a>()  // optional, defaults to ax140900::Ax140900
 );
 
 // open the socket

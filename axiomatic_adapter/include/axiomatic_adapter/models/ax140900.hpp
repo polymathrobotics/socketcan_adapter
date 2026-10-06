@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "axiomatic_adapter/axiomatic_codec.hpp"
+#include "axiomatic_adapter/axiomatic_model.hpp"
 #include "axiomatic_adapter/axiomatic_protocol.hpp"
 #include "socketcan_adapter/can_frame.hpp"
 
@@ -42,10 +42,10 @@ enum class MessageId : uint16_t
   CanFdStream = 5,
 };
 
-/// @class polymath::can::ax140900::Codec
+/// @class polymath::can::ax140900::Ax140900
 /// @brief Encodes a single-frame CAN Stream message with a fixed 2-byte time stamp.
 /// Decodes CAN Stream messages; notification frames are skipped.
-class Codec : public AxiomaticCodec
+class Ax140900 : public AxiomaticModel
 {
 public:
   std::vector<uint8_t> encode(const polymath::socketcan::CanFrame & frame) const override;

@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "axiomatic_adapter/axiomatic_codec.hpp"
+#include "axiomatic_adapter/axiomatic_model.hpp"
 #include "axiomatic_adapter/axiomatic_protocol.hpp"
 #include "socketcan_adapter/can_frame.hpp"
 
@@ -38,10 +38,10 @@ enum class MessageId : uint16_t
   ForwardedData = 1,
 };
 
-/// @class polymath::can::ax142100a::Codec
+/// @class polymath::can::ax142100a::Ax142100a
 /// @brief Encodes a Forwarded Data message.
 /// Decodes Forwarded Data messages; raw data payloads are skipped.
-class Codec : public AxiomaticCodec
+class Ax142100a : public AxiomaticModel
 {
 public:
   std::vector<uint8_t> encode(const polymath::socketcan::CanFrame & frame) const override;
