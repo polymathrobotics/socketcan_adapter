@@ -83,6 +83,9 @@ ParsedMessages parseMessages(uint16_t protocol_id, const uint8_t * data, size_t 
       }
       message << std::dec << " (expected Protocol ID 0x" << std::hex << protocol_id << std::dec << "; remaining "
               << (size - scan_pos) << " bytes ignored)";
+      if (tag_match) {
+        message << "; the device speaks a different Protocol ID, so the wrong --model may be selected";
+      }
       parsed.diagnostics.push_back(message.str());
       return parsed;
     }

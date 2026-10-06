@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #if __has_include(<catch2/catch_all.hpp>)
@@ -161,6 +162,7 @@ TEST_CASE("Models reject another model's Protocol ID", "[model]")
     polymath::can::ax140900::Ax140900().decode(AX142100A_MANUAL_EXAMPLE.data(), AX142100A_MANUAL_EXAMPLE.size());
   REQUIRE(result.frames.empty());
   REQUIRE(1 == result.diagnostics.size());
+  REQUIRE(std::string::npos != result.diagnostics[0].find("wrong --model"));
 }
 
 TEST_CASE("Models drop buffers shorter than a header", "[model]")

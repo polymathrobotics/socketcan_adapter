@@ -83,7 +83,7 @@ int main(int argc, char * argv[])
   polymath::can::AxiomaticSocketcanBridge bridge(
     can_interface, ip, port, verbose, tcp_nodelay, polymath::can::makeModel(model));
 
-  std::cout << "Axiomatic Socketcan Bridge configuring..." << std::endl;
+  std::cout << "Axiomatic Socketcan Bridge configuring with model " << model << "..." << std::endl;
 
   while (!shutdown_requested.load() && !bridge.on_configure()) {
     std::cerr << "Configuration failed.";
