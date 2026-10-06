@@ -39,12 +39,14 @@ public:
   /// @param tcp_nodelay when true (default), sets TCP_NODELAY on the underlying
   ///                    AxiomaticAdapter socket. See AxiomaticAdapter for the
   ///                    full tradeoff discussion.
+  /// @param model converter model, selects the wire format
   AxiomaticSocketcanBridge(
     const std::string & can_interface_name,
     const std::string & ip,
     const std::string & port,
     bool verbose = false,
-    bool tcp_nodelay = true);
+    bool tcp_nodelay = true,
+    AxiomaticModel model = AxiomaticModel::AX140900);
 
   /// @brief Destruct axiomatic socketcan bridge
   ~AxiomaticSocketcanBridge();

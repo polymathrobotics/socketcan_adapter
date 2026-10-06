@@ -1,21 +1,41 @@
 # Axiomatic Adapter
-Library and Adapter for the Axiomatic CAN-ETH converter.
+Library and Adapter for Axiomatic CAN-Ethernet converters.
 
-For more information on the decoding/endcoding and product, see the links below:
+For more information on the decoding/encoding, see:
 
 https://www.notion.so/polymathrobotics/Axiomatic-CAN-to-Ethernet-Converter-08e078d8914f40d6b7cd99ebf39fe1b0
 
-https://products.axiomatic.com/viewitems/connectivity/ethernet-can-converters
+## Supported Models
+
+| `--model` | Device | Protocol reference |
+| --- | --- | --- |
+| `ax140900` (default) | [AX140900 CAN/Ethernet Converter](https://www.axiomatic.com/product/canethernet-converter-ax140900/) | [Ethernet to CAN Converter Communication Protocol](https://www.axiomatic.com/wp-content/uploads/Ethernet-to-CAN-Converter-Communication-Protocol.pdf) |
+| `ax142100a` | [AX142100A Protocol Converter, Ethernet/RS-422/2x RS-232/CAN](https://www.axiomatic.com/product/protocol-converter-ethernet-rs-422-2-rs-232-can-sae-j1939-ax142100a/) | [UMAX142100A](https://www.axiomatic.com/wp-content/uploads/UMAX142100A.pdf), section 4.2 |
+
+Every model shares the 11-byte `AXIO` message header in `axiomatic_protocol.hpp`.
+Each model's `encode`/`decode` lives in `include/axiomatic_adapter/models/` and `src/models/`.
+They take bytes and `CanFrame`s only, so they can be used without a socket.
+
+### Adding a model
+
+1. Add `include/axiomatic_adapter/models/<model>.hpp` and `src/models/<model>.cpp` defining `PROTOCOL_ID`, `encode`, and `decode`.
+   Build them from `protocol::encodeMessage` and `protocol::parseMessages`.
+2. Add the source to the `axiomatic_adapter` library in `CMakeLists.txt`.
+3. Add an `AxiomaticModel` value, and its case in `getCodec` and entry in `modelNames` in `src/axiomatic_codec.cpp`.
+4. Add the model to the round trip test and a decode test of the manual's example bytes in `test/axiomatic_codec_test.cpp`.
 
 ## Usage
 ### Socketcan-Axiomatic Bridge
 
 ```bash
-ros2 run axiomatic_adapter axiomatic_socketcan_bridge [CAN_INTERFACE_NAME] [IP_ADDRESS] [PORT] [OPTIONAL]--retry-connection[-r] [OPTIONAL]--max-retry-attempts [OPTIONAL]--verbose[-v] [OPTIONAL]--no-tcp-nodelay
+ros2 run axiomatic_adapter axiomatic_socketcan_bridge [CAN_INTERFACE_NAME] [IP_ADDRESS] [PORT] [OPTIONAL]--model[-m] [OPTIONAL]--retry-connection[-r] [OPTIONAL]--max-retry-attempts [OPTIONAL]--verbose[-v] [OPTIONAL]--no-tcp-nodelay
 
 # Examples
 # generic example to bridge vcan0 with axiomatic using 192.168.50.34:4000
 ros2 run axiomatic_adapter axiomatic_socketcan_bridge vcan0 192.168.50.34 4000
+
+# bridge vcan0 with an AX142100A
+ros2 run axiomatic_adapter axiomatic_socketcan_bridge vcan0 192.168.50.34 4000 --model ax142100a
 
 # this will continue retrying to connect forever and not exit on first failure. It will also print more detailed logs
 ros2 run axiomatic_adapter axiomatic_socketcan_bridge vcan0 192.168.50.34 4000 -r -v
@@ -44,7 +64,8 @@ polymath::can::AxiomaticAdapter adapter(
   [](std::unique_ptr<const CanFrame> /*frame*/) { /* No-op */ },
   [](polymath::can::AxiomaticAdapter::socket_error_string_t /*error*/) { /*do nothing*/ },
   receive_timeout_ms,
-  /*tcp_nodelay=*/true  // optional, defaults to true; see below
+  /*tcp_nodelay=*/true,  // optional, defaults to true; see below
+  polymath::can::AxiomaticModel::AX142100A  // optional, defaults to AX140900
 );
 
 // open the socket
@@ -81,3 +102,5 @@ If you have any doubt, leave it at the default.
 2. Axiomatic-specific status messages are ignored and deliberately skipped. In future revisions this should be handled and reported as necessary.
 3. CAN FD is not supported
 4. Only TCP mode is supported; no UDP support (heartbeats are required for UDP support)
+5. AX142100A raw data (serial) payloads are skipped; only CAN frames are delivered.
+6. AX142100A 11-bit IDs are assumed to be 2 bytes on the wire; the manual only shows a 29-bit example.
