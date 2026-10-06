@@ -15,21 +15,17 @@
 #ifndef AXIOMATIC_ADAPTER__MODELS__AX140900_HPP_
 #define AXIOMATIC_ADAPTER__MODELS__AX140900_HPP_
 
-#include <cstddef>
 #include <cstdint>
 #include <vector>
 
+#include "axiomatic_adapter/axiomatic_codec.hpp"
 #include "axiomatic_adapter/axiomatic_protocol.hpp"
 #include "socketcan_adapter/can_frame.hpp"
 
 /// @brief AX140900 CAN/Ethernet Converter, "Ethernet to CAN Converter Communication Protocol" v6.
 /// https://www.axiomatic.com/product/canethernet-converter-ax140900/
 /// https://www.axiomatic.com/wp-content/uploads/Ethernet-to-CAN-Converter-Communication-Protocol.pdf
-namespace polymath
-{
-namespace can
-{
-namespace ax140900
+namespace polymath::can::ax140900
 {
 
 /// @brief Protocol ID, 0xBA 0x36 on the wire
@@ -46,17 +42,19 @@ enum class MessageId : uint16_t
   CanFdStream = 5,
 };
 
-/// @brief Encode one CAN frame as a single-frame CAN Stream message with a fixed 2-byte time stamp
-std::vector<uint8_t> encode(const polymath::socketcan::CanFrame & frame);
+/// @class polymath::can::ax140900::Codec
+/// @brief Encodes a single-frame CAN Stream message with a fixed 2-byte time stamp.
+/// Decodes CAN Stream messages; notification frames are skipped.
+class Codec : public AxiomaticCodec
+{
+public:
+  std::vector<uint8_t> encode(const polymath::socketcan::CanFrame & frame) const override;
 
-/// @brief Decode every CAN frame packed in the CAN Stream messages of a buffer.
-/// Notification frames and other Message IDs are skipped.
-/// @param data buffer start
-/// @param size buffer length in bytes
-protocol::DecodeResult decode(const uint8_t * data, size_t size);
+protected:
+  uint16_t protocolId() const override;
+  bool decodeMessage(const protocol::MessageView & message, protocol::DecodeResult & result) const override;
+};
 
-}  // namespace ax140900
-}  // namespace can
-}  // namespace polymath
+}  // namespace polymath::can::ax140900
 
 #endif  // AXIOMATIC_ADAPTER__MODELS__AX140900_HPP_

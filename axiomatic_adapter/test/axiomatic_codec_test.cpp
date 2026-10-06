@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <memory>
+#include <stdexcept>
 #include <vector>
 
 #if __has_include(<catch2/catch_all.hpp>)
@@ -22,12 +24,13 @@
 #else
   #include <catch2/catch.hpp>  // v2
 #endif
+#include "axiomatic_adapter/axiomatic_adapter.hpp"
 #include "axiomatic_adapter/axiomatic_codec.hpp"
 #include "axiomatic_adapter/models/ax140900.hpp"
 #include "axiomatic_adapter/models/ax142100a.hpp"
 
 using polymath::can::AxiomaticModel;
-using polymath::can::getCodec;
+using polymath::can::makeCodec;
 using polymath::socketcan::CanFrame;
 using polymath::socketcan::IdType;
 
@@ -77,7 +80,7 @@ TEST_CASE("AX142100A matches the manual example", "[codec][ax142100a]")
   SECTION("decode")
   {
     const auto result =
-      polymath::can::ax142100a::decode(AX142100A_MANUAL_EXAMPLE.data(), AX142100A_MANUAL_EXAMPLE.size());
+      polymath::can::ax142100a::Codec().decode(AX142100A_MANUAL_EXAMPLE.data(), AX142100A_MANUAL_EXAMPLE.size());
     REQUIRE(result.diagnostics.empty());
     REQUIRE(1 == result.frames.size());
     requireSameFrame(result.frames[0], AX142100A_MANUAL_FRAME);
@@ -85,7 +88,7 @@ TEST_CASE("AX142100A matches the manual example", "[codec][ax142100a]")
 
   SECTION("encode")
   {
-    REQUIRE(AX142100A_MANUAL_EXAMPLE == polymath::can::ax142100a::encode(AX142100A_MANUAL_FRAME));
+    REQUIRE(AX142100A_MANUAL_EXAMPLE == polymath::can::ax142100a::Codec().encode(AX142100A_MANUAL_FRAME));
   }
 }
 
@@ -95,7 +98,7 @@ TEST_CASE("AX142100A skips raw data payloads", "[codec][ax142100a]")
     0x41, 0x58, 0x49, 0x4F, 0x28, 0x4E, 0x01, 0x00, 0x00, 0x04, 0x00, 0x40, 'a', 'b', 'c'};
   const auto stream = concat(raw, AX142100A_MANUAL_EXAMPLE);
 
-  const auto result = polymath::can::ax142100a::decode(stream.data(), stream.size());
+  const auto result = polymath::can::ax142100a::Codec().decode(stream.data(), stream.size());
   REQUIRE(1 == result.diagnostics.size());
   REQUIRE(1 == result.frames.size());
   requireSameFrame(result.frames[0], AX142100A_MANUAL_FRAME);
@@ -110,7 +113,7 @@ TEST_CASE("AX140900 encodes a CAN Stream message with only DLC data bytes", "[co
     0x01, 0x04, 0xF0, 0x18,  // ID
     0x01, 0x02, 0x03, 0x04,
   };
-  REQUIRE(expected == polymath::can::ax140900::encode(makeFrame(0x18F00401, true, {0x01, 0x02, 0x03, 0x04})));
+  REQUIRE(expected == polymath::can::ax140900::Codec().encode(makeFrame(0x18F00401, true, {0x01, 0x02, 0x03, 0x04})));
 }
 
 TEST_CASE("AX140900 decodes packed frames and skips non-CAN content", "[codec][ax140900]")
@@ -125,7 +128,7 @@ TEST_CASE("AX140900 decodes packed frames and skips non-CAN content", "[codec][a
   const std::vector<uint8_t> heartbeat = {'A', 'X', 'I', 'O', 0xBA, 0x36, 0x04, 0x00, 0x00, 0x00, 0x00};
   const auto stream = concat(can_stream, heartbeat);
 
-  const auto result = polymath::can::ax140900::decode(stream.data(), stream.size());
+  const auto result = polymath::can::ax140900::Codec().decode(stream.data(), stream.size());
   REQUIRE(2 == result.frames.size());
   requireSameFrame(result.frames[0], makeFrame(0x123, false, {0xAA, 0xBB}));
   requireSameFrame(result.frames[1], makeFrame(0x18F00001, true, {0xCC}));
@@ -136,7 +139,7 @@ TEST_CASE("AX140900 decodes packed frames and skips non-CAN content", "[codec][a
 TEST_CASE("Codecs round trip", "[codec]")
 {
   const auto model = GENERATE(AxiomaticModel::AX140900, AxiomaticModel::AX142100A);
-  const auto & codec = getCodec(model);
+  const auto codec = makeCodec(model);
   const std::vector<CanFrame> frames = {
     makeFrame(0x123, false, {0x01, 0x02, 0x03}),
     makeFrame(0x18F00401, true, {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}),
@@ -145,9 +148,9 @@ TEST_CASE("Codecs round trip", "[codec]")
 
   std::vector<uint8_t> stream;
   for (const auto & frame : frames) {
-    stream = concat(stream, codec.encode(frame));
+    stream = concat(stream, codec->encode(frame));
   }
-  const auto result = codec.decode(stream.data(), stream.size());
+  const auto result = codec->decode(stream.data(), stream.size());
   REQUIRE(result.diagnostics.empty());
   REQUIRE(frames.size() == result.frames.size());
   for (size_t i = 0; i < frames.size(); ++i) {
@@ -158,7 +161,7 @@ TEST_CASE("Codecs round trip", "[codec]")
 TEST_CASE("Codecs reject another model's Protocol ID", "[codec]")
 {
   const auto result =
-    getCodec(AxiomaticModel::AX140900).decode(AX142100A_MANUAL_EXAMPLE.data(), AX142100A_MANUAL_EXAMPLE.size());
+    makeCodec(AxiomaticModel::AX140900)->decode(AX142100A_MANUAL_EXAMPLE.data(), AX142100A_MANUAL_EXAMPLE.size());
   REQUIRE(result.frames.empty());
   REQUIRE(1 == result.diagnostics.size());
 }
@@ -166,7 +169,7 @@ TEST_CASE("Codecs reject another model's Protocol ID", "[codec]")
 TEST_CASE("Codecs drop buffers shorter than a header", "[codec]")
 {
   const std::vector<uint8_t> partial(AX142100A_MANUAL_EXAMPLE.begin(), AX142100A_MANUAL_EXAMPLE.begin() + 5);
-  const auto result = getCodec(AxiomaticModel::AX142100A).decode(partial.data(), partial.size());
+  const auto result = makeCodec(AxiomaticModel::AX142100A)->decode(partial.data(), partial.size());
   REQUIRE(result.frames.empty());
   REQUIRE(1 == result.diagnostics.size());
 }
@@ -176,4 +179,18 @@ TEST_CASE("Model names map to models", "[codec]")
   const auto names = polymath::can::modelNames();
   REQUIRE(AxiomaticModel::AX140900 == names.at("ax140900"));
   REQUIRE(AxiomaticModel::AX142100A == names.at("ax142100a"));
+}
+
+TEST_CASE("AxiomaticAdapter rejects a null codec", "[codec]")
+{
+  REQUIRE_THROWS_AS(
+    polymath::can::AxiomaticAdapter(
+      "192.168.0.34",
+      "4000",
+      [](std::unique_ptr<const CanFrame> /*frame*/) {},
+      [](polymath::can::AxiomaticAdapter::socket_error_string_t /*error*/) {},
+      polymath::can::AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS,
+      true,
+      nullptr),
+    std::invalid_argument);
 }

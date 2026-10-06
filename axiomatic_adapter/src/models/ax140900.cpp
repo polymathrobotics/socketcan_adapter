@@ -18,14 +18,9 @@
 #include <array>
 #include <sstream>
 #include <string>
-#include <utility>
 #include <vector>
 
-namespace polymath
-{
-namespace can
-{
-namespace ax140900
+namespace polymath::can::ax140900
 {
 
 namespace
@@ -113,7 +108,7 @@ void decodeCanStream(const uint8_t * body, size_t body_size, protocol::DecodeRes
 }
 }  // namespace
 
-std::vector<uint8_t> encode(const polymath::socketcan::CanFrame & frame)
+std::vector<uint8_t> Codec::encode(const polymath::socketcan::CanFrame & frame) const
 {
   const bool extended_id = polymath::socketcan::IdType::EXTENDED == frame.get_id_type();
   const size_t data_length = std::min<size_t>(frame.get_len(), CAN_MAX_DLC);
@@ -130,22 +125,18 @@ std::vector<uint8_t> encode(const polymath::socketcan::CanFrame & frame)
   return protocol::encodeMessage(PROTOCOL_ID, static_cast<uint16_t>(MessageId::CanStream), MESSAGE_VERSION, body);
 }
 
-protocol::DecodeResult decode(const uint8_t * data, size_t size)
+uint16_t Codec::protocolId() const
 {
-  protocol::ParsedMessages parsed = protocol::parseMessages(PROTOCOL_ID, data, size);
-  protocol::DecodeResult result{{}, std::move(parsed.diagnostics)};
-  for (const auto & message : parsed.messages) {
-    if (static_cast<uint16_t>(MessageId::CanStream) == message.message_id) {
-      decodeCanStream(message.body, message.body_size, result);
-    } else {
-      result.diagnostics.push_back(
-        "SKIP: non-CAN-Stream message (Message ID " + std::to_string(message.message_id) + ", " +
-        std::to_string(message.body_size) + "-byte body) — heartbeat/status/FD/unknown");
-    }
-  }
-  return result;
+  return PROTOCOL_ID;
 }
 
-}  // namespace ax140900
-}  // namespace can
-}  // namespace polymath
+bool Codec::decodeMessage(const protocol::MessageView & message, protocol::DecodeResult & result) const
+{
+  if (static_cast<uint16_t>(MessageId::CanStream) != message.message_id) {
+    return false;
+  }
+  decodeCanStream(message.body, message.body_size, result);
+  return true;
+}
+
+}  // namespace polymath::can::ax140900

@@ -18,15 +18,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "axiomatic_adapter/axiomatic_protocol.hpp"
 #include "socketcan_adapter/can_frame.hpp"
 
-namespace polymath
-{
-namespace can
+namespace polymath::can
 {
 
 /// @brief Supported Axiomatic Ethernet/CAN converters
@@ -36,23 +35,39 @@ enum class AxiomaticModel
   AX142100A,
 };
 
-/// @brief Wire format of one converter model
-struct AxiomaticCodec
+/// @class polymath::can::AxiomaticCodec
+/// @brief Wire format of one converter model.
+/// A model overrides protocolId, encode, and decodeMessage.
+/// Methods are const and keep no state between calls; one instance may be shared across threads.
+class AxiomaticCodec
 {
-  /// @brief Encode one CAN frame as one complete protocol message
-  std::vector<uint8_t> (*encode)(const polymath::socketcan::CanFrame & frame);
+public:
+  virtual ~AxiomaticCodec() = default;
 
-  /// @brief Decode every CAN frame in a buffer of back-to-back protocol messages
-  protocol::DecodeResult (*decode)(const uint8_t * data, size_t size);
+  /// @brief Encode one CAN frame as one complete protocol message
+  virtual std::vector<uint8_t> encode(const polymath::socketcan::CanFrame & frame) const = 0;
+
+  /// @brief Decode every CAN frame in a buffer of back-to-back protocol messages.
+  /// Messages with a Message ID that carries no CAN frames are skipped.
+  /// @param data buffer start
+  /// @param size buffer length in bytes
+  protocol::DecodeResult decode(const uint8_t * data, size_t size) const;
+
+protected:
+  /// @brief Protocol ID every message of this model carries
+  virtual uint16_t protocolId() const = 0;
+
+  /// @brief Append the CAN frames in one message to result
+  /// @return false when the Message ID carries no CAN frames
+  virtual bool decodeMessage(const protocol::MessageView & message, protocol::DecodeResult & result) const = 0;
 };
 
-/// @brief Look up the codec for a model
-const AxiomaticCodec & getCodec(AxiomaticModel model);
+/// @brief Construct the codec for a model
+std::unique_ptr<const AxiomaticCodec> makeCodec(AxiomaticModel model);
 
 /// @brief Lower-case model names, e.g. "ax142100a", for command line and configuration parsing
 std::map<std::string, AxiomaticModel> modelNames();
 
-}  // namespace can
-}  // namespace polymath
+}  // namespace polymath::can
 
 #endif  // AXIOMATIC_ADAPTER__AXIOMATIC_CODEC_HPP_

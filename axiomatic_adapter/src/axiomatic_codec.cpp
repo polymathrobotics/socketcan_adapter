@@ -15,30 +15,38 @@
 #include "axiomatic_adapter/axiomatic_codec.hpp"
 
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "axiomatic_adapter/models/ax140900.hpp"
 #include "axiomatic_adapter/models/ax142100a.hpp"
 
-namespace polymath
-{
-namespace can
+namespace polymath::can
 {
 
-namespace
+protocol::DecodeResult AxiomaticCodec::decode(const uint8_t * data, size_t size) const
 {
-constexpr AxiomaticCodec AX140900_CODEC{&ax140900::encode, &ax140900::decode};
-constexpr AxiomaticCodec AX142100A_CODEC{&ax142100a::encode, &ax142100a::decode};
-}  // namespace
+  protocol::ParsedMessages parsed = protocol::parseMessages(protocolId(), data, size);
+  protocol::DecodeResult result{{}, std::move(parsed.diagnostics)};
+  for (const auto & message : parsed.messages) {
+    if (!decodeMessage(message, result)) {
+      result.diagnostics.push_back(
+        "SKIP: Message ID " + std::to_string(message.message_id) + " (" + std::to_string(message.body_size) +
+        "-byte body) carries no CAN frames");
+    }
+  }
+  return result;
+}
 
-const AxiomaticCodec & getCodec(AxiomaticModel model)
+std::unique_ptr<const AxiomaticCodec> makeCodec(AxiomaticModel model)
 {
   switch (model) {
     case AxiomaticModel::AX140900:
-      return AX140900_CODEC;
+      return std::make_unique<ax140900::Codec>();
     case AxiomaticModel::AX142100A:
-      return AX142100A_CODEC;
+      return std::make_unique<ax142100a::Codec>();
   }
   throw std::invalid_argument("Unknown AxiomaticModel " + std::to_string(static_cast<int>(model)));
 }
@@ -51,5 +59,4 @@ std::map<std::string, AxiomaticModel> modelNames()
   };
 }
 
-}  // namespace can
-}  // namespace polymath
+}  // namespace polymath::can

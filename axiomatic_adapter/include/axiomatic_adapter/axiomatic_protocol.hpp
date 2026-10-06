@@ -23,11 +23,7 @@
 
 #include "socketcan_adapter/can_frame.hpp"
 
-namespace polymath
-{
-namespace can
-{
-namespace protocol
+namespace polymath::can::protocol
 {
 
 /// @brief Message Header framing shared by every Axiomatic Ethernet converter.
@@ -93,8 +89,6 @@ std::vector<uint8_t> encodeMessage(
 /// @param size buffer length in bytes
 ParsedMessages parseMessages(uint16_t protocol_id, const uint8_t * data, size_t size);
 
-}  // namespace protocol
-}  // namespace can
-}  // namespace polymath
+}  // namespace polymath::can::protocol
 
 #endif  // AXIOMATIC_ADAPTER__AXIOMATIC_PROTOCOL_HPP_

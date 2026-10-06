@@ -19,11 +19,7 @@
 #include <string>
 #include <vector>
 
-namespace polymath
-{
-namespace can
-{
-namespace protocol
+namespace polymath::can::protocol
 {
 
 namespace
@@ -114,6 +110,4 @@ ParsedMessages parseMessages(uint16_t protocol_id, const uint8_t * data, size_t 
   return parsed;
 }
 
-}  // namespace protocol
-}  // namespace can
-}  // namespace polymath
+}  // namespace polymath::can::protocol

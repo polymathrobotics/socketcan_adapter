@@ -21,7 +21,9 @@
 #include <deque>
 #include <future>
 #include <iostream>
+#include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -31,9 +33,7 @@
 #include <boost/asio/steady_timer.hpp>
 #include <boost/system/error_code.hpp>
 
-namespace polymath
-{
-namespace can
+namespace polymath::can
 {
 
 class AxiomaticAdapter::AxiomaticAdapterImpl
@@ -46,7 +46,7 @@ public:
     const std::function<void(AxiomaticAdapter::socket_error_string_t error)> && error_callback_function,
     const std::chrono::milliseconds & receive_timeout_ms,
     bool tcp_nodelay,
-    AxiomaticModel model)
+    std::unique_ptr<const AxiomaticCodec> codec)
   : tcp_io_context_()
   , tcp_socket_(tcp_io_context_)
   , ip_address_(ip_address)
@@ -56,8 +56,12 @@ public:
   , receive_timeout_ms_(receive_timeout_ms)
   , rx_buffer_(RECEIVE_BUFFER_SIZE, 0)
   , tcp_nodelay_(tcp_nodelay)
-  , codec_(getCodec(model))
-  {}
+  , codec_(std::move(codec))
+  {
+    if (!codec_) {
+      throw std::invalid_argument("AxiomaticAdapter requires a codec");
+    }
+  }
 
   ~AxiomaticAdapterImpl()
   {
@@ -254,7 +258,7 @@ public:
     // NOTE: given the axiomatic documentation claims a deliberate 256-byte design + the large buffer size used in
     // rx_buffer_, a mid-tcp-message split is never supposed to occur. In testing this drop has never happened.
     // it is possible that with non-standard very low MTU's or in future revisions, this assumption no longer holds
-    protocol::DecodeResult decoded = codec_.decode(rx_buffer_.data(), bytes_received);
+    protocol::DecodeResult decoded = codec_->decode(rx_buffer_.data(), bytes_received);
     for (const auto & diagnostic : decoded.diagnostics) {
       std::cerr << "[Axiomatic parser] " << diagnostic << std::endl;
     }
@@ -278,7 +282,7 @@ public:
 
   std::optional<AxiomaticAdapter::socket_error_string_t> send(const polymath::socketcan::CanFrame & frame)
   {
-    const std::vector<uint8_t> full_message = codec_.encode(frame);
+    const std::vector<uint8_t> full_message = codec_->encode(frame);
 
     try {
       boost::asio::write(tcp_socket_, boost::asio::buffer(full_message.data(), full_message.size()));
@@ -337,7 +341,7 @@ private:
   // when true, disable Nagle's algorithm on the TCP socket after connect
   bool tcp_nodelay_;
 
-  const AxiomaticCodec & codec_;
+  std::unique_ptr<const AxiomaticCodec> codec_;
 };
 
 AxiomaticAdapter::AxiomaticAdapter(
@@ -347,7 +351,7 @@ AxiomaticAdapter::AxiomaticAdapter(
   const std::function<void(AxiomaticAdapter::socket_error_string_t error)> && error_callback_function,
   const std::chrono::milliseconds & receive_timeout_ms,
   bool tcp_nodelay,
-  AxiomaticModel model)
+  std::unique_ptr<const AxiomaticCodec> codec)
 : pimpl_(std::make_unique<AxiomaticAdapterImpl>(
     ip_address,
     port,
@@ -355,7 +359,7 @@ AxiomaticAdapter::AxiomaticAdapter(
     std::move(error_callback_function),
     receive_timeout_ms,
     tcp_nodelay,
-    model))
+    std::move(codec)))
 {}
 
 AxiomaticAdapter::~AxiomaticAdapter()
@@ -415,5 +419,4 @@ bool AxiomaticAdapter::is_thread_running()
   return pimpl_->is_thread_running();
 }
 
-}  // namespace can
-}  // namespace polymath
+}  // namespace polymath::can

@@ -80,7 +80,8 @@ int main(int argc, char * argv[])
   configureArguments(app, can_interface, ip, port, verbose, retry_connection, max_retry_attempts, tcp_nodelay, model);
   CLI11_PARSE(app, argc, argv);
 
-  polymath::can::AxiomaticSocketcanBridge bridge(can_interface, ip, port, verbose, tcp_nodelay, model);
+  polymath::can::AxiomaticSocketcanBridge bridge(
+    can_interface, ip, port, verbose, tcp_nodelay, polymath::can::makeCodec(model));
 
   std::cout << "Axiomatic Socketcan Bridge configuring..." << std::endl;
 

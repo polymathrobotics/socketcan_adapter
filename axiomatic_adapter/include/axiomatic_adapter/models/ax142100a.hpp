@@ -15,21 +15,17 @@
 #ifndef AXIOMATIC_ADAPTER__MODELS__AX142100A_HPP_
 #define AXIOMATIC_ADAPTER__MODELS__AX142100A_HPP_
 
-#include <cstddef>
 #include <cstdint>
 #include <vector>
 
+#include "axiomatic_adapter/axiomatic_codec.hpp"
 #include "axiomatic_adapter/axiomatic_protocol.hpp"
 #include "socketcan_adapter/can_frame.hpp"
 
 /// @brief AX142100A RS232-RS232-RS422-ENET-CAN converter, UMAX142100A section 4.2.
 /// https://www.axiomatic.com/product/protocol-converter-ethernet-rs-422-2-rs-232-can-sae-j1939-ax142100a/
 /// https://www.axiomatic.com/wp-content/uploads/UMAX142100A.pdf
-namespace polymath
-{
-namespace can
-{
-namespace ax142100a
+namespace polymath::can::ax142100a
 {
 
 /// @brief Protocol ID 20008, 0x28 0x4E on the wire
@@ -42,17 +38,19 @@ enum class MessageId : uint16_t
   ForwardedData = 1,
 };
 
-/// @brief Encode one CAN frame as a Forwarded Data message
-std::vector<uint8_t> encode(const polymath::socketcan::CanFrame & frame);
+/// @class polymath::can::ax142100a::Codec
+/// @brief Encodes a Forwarded Data message.
+/// Decodes Forwarded Data messages; raw data payloads are skipped.
+class Codec : public AxiomaticCodec
+{
+public:
+  std::vector<uint8_t> encode(const polymath::socketcan::CanFrame & frame) const override;
 
-/// @brief Decode every CAN frame in the Forwarded Data messages of a buffer.
-/// Raw data payloads and other Message IDs are skipped.
-/// @param data buffer start
-/// @param size buffer length in bytes
-protocol::DecodeResult decode(const uint8_t * data, size_t size);
+protected:
+  uint16_t protocolId() const override;
+  bool decodeMessage(const protocol::MessageView & message, protocol::DecodeResult & result) const override;
+};
 
-}  // namespace ax142100a
-}  // namespace can
-}  // namespace polymath
+}  // namespace polymath::can::ax142100a
 
 #endif  // AXIOMATIC_ADAPTER__MODELS__AX142100A_HPP_
