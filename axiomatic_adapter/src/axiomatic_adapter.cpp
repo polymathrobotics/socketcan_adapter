@@ -146,6 +146,7 @@ public:
 
   bool closeSocket()
   {
+    rx_carry_.clear();
     if (socket_state_ != TCPSocketState::CLOSED) {
       boost::system::error_code error_code;
       tcp_socket_.close(error_code);
@@ -172,13 +173,13 @@ public:
 
     tcp_receive_thread_ = std::thread([this]() {
       while (!stop_thread_requested_) {
-        polymath::socketcan::CanFrame frame = polymath::socketcan::CanFrame();
-        std::optional<AxiomaticAdapter::socket_error_string_t> error = receive(frame);
-
-        if (!error) {
-          receive_callback_(std::make_unique<polymath::socketcan::CanFrame>(frame));
-        } else {
+        std::optional<AxiomaticAdapter::socket_error_string_t> error = readAndDecode();
+        if (error) {
           error_callback_(*error);
+        }
+        while (!pending_frames_.empty()) {
+          receive_callback_(std::make_unique<polymath::socketcan::CanFrame>(pending_frames_.front()));
+          pending_frames_.pop_front();
         }
       }
 
@@ -203,17 +204,81 @@ public:
     return false;
   }
 
+  bool setOnRawDataCallback(std::function<void(std::vector<uint8_t> data)> && callback_function)
+  {
+    if (thread_running_) {
+      return false;
+    }
+    raw_data_callback_ = std::move(callback_function);
+    return true;
+  }
+
   std::optional<AxiomaticAdapter::socket_error_string_t> receive(polymath::socketcan::CanFrame & can_frame)
   {
     // A previous TCP read may have decoded several CAN frames out of
     // packed protocol messages — deliver those one at a time before doing
     // another network read, so packed frames don't get silently dropped
-    if (!pending_frames_.empty()) {
-      can_frame = pending_frames_.front();
-      pending_frames_.pop_front();
-      return std::nullopt;
+    if (pending_frames_.empty()) {
+      std::optional<AxiomaticAdapter::socket_error_string_t> error = readAndDecode();
+      if (error) {
+        return error;
+      }
     }
+    if (pending_frames_.empty()) {
+      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("No CAN frames in received protocol traffic.");
+    }
+    can_frame = pending_frames_.front();
+    pending_frames_.pop_front();
+    return std::nullopt;
+  }
 
+  std::optional<const polymath::socketcan::CanFrame> receive()
+  {
+    polymath::socketcan::CanFrame can_frame = polymath::socketcan::CanFrame();
+    auto result = receive(can_frame);
+    return !result ? std::optional<const polymath::socketcan::CanFrame>(can_frame) : std::nullopt;
+  }
+
+  std::optional<AxiomaticAdapter::socket_error_string_t> send(const polymath::socketcan::CanFrame & frame)
+  {
+    return write(model_->encode(frame));
+  }
+
+  std::optional<AxiomaticAdapter::socket_error_string_t> sendRawData(const std::vector<uint8_t> & data)
+  {
+    std::optional<std::vector<uint8_t>> message;
+    try {
+      message = model_->encodeRawData(data);
+    } catch (const std::length_error & e) {
+      return std::optional<AxiomaticAdapter::socket_error_string_t>(e.what());
+    }
+    if (!message) {
+      return std::optional<AxiomaticAdapter::socket_error_string_t>("Model has no raw data channel");
+    }
+    return write(*message);
+  }
+
+  bool supportsRawData() const
+  {
+    return model_->supportsRawData();
+  }
+
+  TCPSocketState get_socket_state()
+  {
+    return socket_state_;
+  }
+
+  bool is_thread_running()
+  {
+    return thread_running_;
+  }
+
+private:
+  /// @brief Read once from the socket, queue decoded CAN frames, and pass raw data to the raw data callback.
+  /// A trailing incomplete message is kept and completed by the next read.
+  /// @return error on timeout or socket failure, or the last diagnostic when the read decoded nothing
+  std::optional<AxiomaticAdapter::socket_error_string_t> readAndDecode()
+  {
     size_t bytes_received = 0;
     std::atomic<bool> data_received(false);
     boost::system::error_code error_code;
@@ -255,54 +320,42 @@ public:
         "Receive operation failed: " + error_code.message());
     }
 
-    // NOTE: given the axiomatic documentation claims a deliberate 256-byte design + the large buffer size used in
-    // rx_buffer_, a mid-tcp-message split is never supposed to occur. In testing this drop has never happened.
-    // it is possible that with non-standard very low MTU's or in future revisions, this assumption no longer holds
-    protocol::DecodeResult decoded = model_->decode(rx_buffer_.data(), bytes_received);
+    const uint8_t * data = rx_buffer_.data();
+    size_t size = bytes_received;
+    if (!rx_carry_.empty()) {
+      rx_carry_.insert(rx_carry_.end(), rx_buffer_.begin(), rx_buffer_.begin() + bytes_received);
+      data = rx_carry_.data();
+      size = rx_carry_.size();
+    }
+    protocol::DecodeResult decoded = model_->decode(data, size);
+    rx_carry_ = std::vector<uint8_t>(data + decoded.consumed, data + size);
+
     for (const auto & diagnostic : decoded.diagnostics) {
       std::cerr << "[Axiomatic parser] " << diagnostic << std::endl;
     }
-    if (decoded.frames.empty()) {
-      return std::make_optional<AxiomaticAdapter::socket_error_string_t>(
-        decoded.diagnostics.empty() ? "No CAN frames in received protocol traffic." : decoded.diagnostics.back());
-    }
-
     pending_frames_.insert(pending_frames_.end(), decoded.frames.begin(), decoded.frames.end());
-    can_frame = pending_frames_.front();
-    pending_frames_.pop_front();
+    if (raw_data_callback_) {
+      for (auto & raw_data : decoded.raw_data) {
+        raw_data_callback_(std::move(raw_data));
+      }
+    }
+    if (decoded.frames.empty() && decoded.raw_data.empty() && !decoded.diagnostics.empty()) {
+      return std::make_optional<AxiomaticAdapter::socket_error_string_t>(decoded.diagnostics.back());
+    }
     return std::nullopt;
   }
 
-  std::optional<const polymath::socketcan::CanFrame> receive()
+  std::optional<AxiomaticAdapter::socket_error_string_t> write(const std::vector<uint8_t> & message)
   {
-    polymath::socketcan::CanFrame can_frame = polymath::socketcan::CanFrame();
-    auto result = receive(can_frame);
-    return !result ? std::optional<const polymath::socketcan::CanFrame>(can_frame) : std::nullopt;
-  }
-
-  std::optional<AxiomaticAdapter::socket_error_string_t> send(const polymath::socketcan::CanFrame & frame)
-  {
-    const std::vector<uint8_t> full_message = model_->encode(frame);
-
+    std::lock_guard<std::mutex> guard(write_mutex_);
     try {
-      boost::asio::write(tcp_socket_, boost::asio::buffer(full_message.data(), full_message.size()));
+      boost::asio::write(tcp_socket_, boost::asio::buffer(message.data(), message.size()));
     } catch (const std::exception & e) {
       return std::optional<AxiomaticAdapter::socket_error_string_t>(std::string("TCP Send Failed: ") + e.what());
     }
     return std::nullopt;
   }
 
-  TCPSocketState get_socket_state()
-  {
-    return socket_state_;
-  }
-
-  bool is_thread_running()
-  {
-    return thread_running_;
-  }
-
-private:
   static constexpr std::chrono::milliseconds TCP_IP_CONNECTION_TIMEOUT_MS{3000};
 
   // receive buffer size for each async_receive call. Larger than the
@@ -321,8 +374,11 @@ private:
   TCPSocketState socket_state_{TCPSocketState::CLOSED};
 
   std::thread tcp_receive_thread_;
-  std::atomic<bool> thread_running_;
-  std::atomic<bool> stop_thread_requested_;
+  std::atomic<bool> thread_running_{false};
+  std::atomic<bool> stop_thread_requested_{false};
+
+  // serializes socket writes from send() and sendRawData()
+  std::mutex write_mutex_;
 
   // CAN frames decoded from one TCP read but not yet delivered
   // through receive(). Drained one at a time, ahead of the next TCP read.
@@ -337,6 +393,11 @@ private:
 
   // receive buffer for async_receive — allocated once at construction and reused across every receive() call
   std::vector<uint8_t> rx_buffer_;
+
+  // bytes of an incomplete protocol message from the previous read
+  std::vector<uint8_t> rx_carry_;
+
+  std::function<void(std::vector<uint8_t> data)> raw_data_callback_;
 
   // when true, disable Nagle's algorithm on the TCP socket after connect
   bool tcp_nodelay_;
@@ -407,6 +468,21 @@ std::optional<AxiomaticAdapter::socket_error_string_t> AxiomaticAdapter::send(
 std::optional<AxiomaticAdapter::socket_error_string_t> AxiomaticAdapter::send(const can_frame & frame)
 {
   return send(polymath::socketcan::CanFrame(frame));
+}
+
+bool AxiomaticAdapter::setOnRawDataCallback(std::function<void(std::vector<uint8_t> data)> && callback_function)
+{
+  return pimpl_->setOnRawDataCallback(std::move(callback_function));
+}
+
+std::optional<AxiomaticAdapter::socket_error_string_t> AxiomaticAdapter::sendRawData(const std::vector<uint8_t> & data)
+{
+  return pimpl_->sendRawData(data);
+}
+
+bool AxiomaticAdapter::supportsRawData() const
+{
+  return pimpl_->supportsRawData();
 }
 
 TCPSocketState AxiomaticAdapter::get_socket_state()

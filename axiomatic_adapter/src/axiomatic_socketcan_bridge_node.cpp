@@ -16,8 +16,10 @@
 #include <condition_variable>
 #include <csignal>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <thread>
+#include <utility>
 
 #include <CLI/CLI.hpp>
 
@@ -50,7 +52,8 @@ void configureArguments(
   bool & retry_connection,
   int & max_retry_attempts,
   bool & tcp_nodelay,
-  std::string & model)
+  std::string & model,
+  std::string & serial_port)
 {
   app.add_option("can_interface", can_interface, "CAN interface to use (default: vcan0)")->default_val("vcan0");
   app.add_option("ip", ip, "IP address of the bridge (default: 192.168.0.34)")->default_val("192.168.0.34");
@@ -67,6 +70,10 @@ void configureArguments(
   app.add_option("-m,--model", model, "Axiomatic converter model (default: ax140900)")
     ->transform(CLI::IsMember(polymath::can::modelNames(), CLI::ignore_case))
     ->default_val("ax140900");
+  app.add_option(
+    "--serial-port",
+    serial_port,
+    "Existing serial device bridged to the converter's serial data, e.g. one end of a virtual pair; ax142100a only");
 }
 
 int main(int argc, char * argv[])
@@ -76,12 +83,26 @@ int main(int argc, char * argv[])
   std::string can_interface, ip, port;
   bool tcp_nodelay = true;
   std::string model;
+  std::string serial_port;
   CLI::App app{"Axiomatic SocketCAN Bridge"};
-  configureArguments(app, can_interface, ip, port, verbose, retry_connection, max_retry_attempts, tcp_nodelay, model);
+  configureArguments(
+    app, can_interface, ip, port, verbose, retry_connection, max_retry_attempts, tcp_nodelay, model, serial_port);
   CLI11_PARSE(app, argc, argv);
 
+  auto axiomatic_model = polymath::can::makeModel(model);
+  if (!serial_port.empty() && !axiomatic_model->supportsRawData()) {
+    std::cerr << "--serial-port needs a model with a raw data channel; " << model << " has none." << std::endl;
+    return 1;
+  }
+
   polymath::can::AxiomaticSocketcanBridge bridge(
-    can_interface, ip, port, verbose, tcp_nodelay, polymath::can::makeModel(model));
+    can_interface,
+    ip,
+    port,
+    verbose,
+    tcp_nodelay,
+    std::move(axiomatic_model),
+    serial_port.empty() ? std::nullopt : std::make_optional(serial_port));
 
   std::cout << "Axiomatic Socketcan Bridge configuring with model " << model << "..." << std::endl;
 

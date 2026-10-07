@@ -55,13 +55,19 @@ struct ParsedMessages
 {
   std::vector<MessageView> messages;
   std::vector<std::string> diagnostics;
+  /// @brief Leading bytes parsed or dropped; the rest is an incomplete message to retry with more data
+  size_t consumed{0};
 };
 
-/// @brief CAN frames decoded from a buffer, plus a description of every byte range skipped or dropped
+/// @brief CAN frames and raw data decoded from a buffer, plus a description of every byte range skipped or dropped
 struct DecodeResult
 {
   std::vector<polymath::socketcan::CanFrame> frames;
+  /// @brief Raw data payloads, in arrival order
+  std::vector<std::vector<uint8_t>> raw_data;
   std::vector<std::string> diagnostics;
+  /// @brief Leading bytes decoded or dropped; the rest is an incomplete message to retry with more data
+  size_t consumed{0};
 };
 
 /// @brief Read an unsigned little-endian integer
@@ -82,8 +88,8 @@ std::vector<uint8_t> encodeMessage(
   uint16_t protocol_id, uint16_t message_id, uint8_t message_version, const std::vector<uint8_t> & body);
 
 /// @brief Split a buffer into back-to-back protocol messages carrying protocol_id.
-/// Scanning stops at the first header whose tag or Protocol ID does not match.
-/// A message whose declared length runs past the buffer is returned truncated to the bytes present.
+/// Scanning stops at the first header whose tag or Protocol ID does not match, and the rest of the buffer is consumed.
+/// A trailing message or header that runs past the buffer is not returned or consumed.
 /// @param protocol_id Protocol ID every message must carry
 /// @param data buffer start
 /// @param size buffer length in bytes

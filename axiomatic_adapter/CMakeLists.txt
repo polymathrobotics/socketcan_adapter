@@ -78,6 +78,7 @@ install(TARGETS axiomatic_adapter
 add_executable(axiomatic_socketcan_bridge
   src/axiomatic_socketcan_bridge.cpp
   src/axiomatic_socketcan_bridge_node.cpp
+  src/serial_port.cpp
 )
 
 target_include_directories(axiomatic_socketcan_bridge PUBLIC
@@ -110,6 +111,23 @@ if(BUILD_TESTING)
     catch_discover_tests(test_axiomatic_model)
   else()
     add_test(NAME test_axiomatic_model COMMAND test_axiomatic_model)
+  endif()
+
+  add_executable(test_axiomatic_adapter_loopback test/axiomatic_adapter_loopback_test.cpp)
+  target_link_libraries(test_axiomatic_adapter_loopback PRIVATE axiomatic_adapter Boost::boost Catch2::Catch2WithMain)
+  if(COMMAND catch_discover_tests)
+    catch_discover_tests(test_axiomatic_adapter_loopback)
+  else()
+    add_test(NAME test_axiomatic_adapter_loopback COMMAND test_axiomatic_adapter_loopback)
+  endif()
+
+  add_executable(test_serial_port test/serial_port_test.cpp src/serial_port.cpp)
+  target_include_directories(test_serial_port PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_serial_port PRIVATE Catch2::Catch2WithMain)
+  if(COMMAND catch_discover_tests)
+    catch_discover_tests(test_serial_port)
+  else()
+    add_test(NAME test_serial_port COMMAND test_serial_port)
   endif()
 
   option(HARDWARE_CONNECTED "Enable tests that require a connected Axiomatic device and CAN interface" OFF)
