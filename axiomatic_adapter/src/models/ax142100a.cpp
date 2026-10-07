@@ -16,6 +16,8 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -39,16 +41,14 @@ constexpr uint8_t STATUS_BYTE_RAW_DATA_FLAG = 0x40;
 constexpr uint8_t STATUS_BYTE_EXTENDED_ID_FLAG = 0x10;
 constexpr uint8_t STATUS_BYTE_CAN_DATA_LENGTH_MASK = 0x0F;
 
-/// Appends every CAN frame in one Forwarded Data message body to result
+/// Appends every CAN frame and raw data payload in one Forwarded Data message body to result
 void decodeForwardedData(const uint8_t * body, size_t body_size, protocol::DecodeResult & result)
 {
   size_t walker = 0;
   while (walker + STATUS_BYTE_BYTES <= body_size) {
     const uint8_t status_byte = body[walker];
     if (0 != (status_byte & STATUS_BYTE_RAW_DATA_FLAG)) {
-      result.diagnostics.push_back(
-        "SKIP: raw data payload of " + std::to_string(body_size - walker) + " bytes at body offset " +
-        std::to_string(walker));
+      result.raw_data.emplace_back(body + walker + STATUS_BYTE_BYTES, body + body_size);
       return;
     }
     const bool extended_id = 0 != (status_byte & STATUS_BYTE_EXTENDED_ID_FLAG);
@@ -96,6 +96,19 @@ std::vector<uint8_t> Ax142100a::encode(const polymath::socketcan::CanFrame & fra
   protocol::appendLittleEndian(body, frame.get_id(), extended_id ? EXTENDED_CAN_ID_BYTES : STANDARD_CAN_ID_BYTES);
   body.insert(body.end(), data.begin(), data.begin() + data_length);
 
+  return protocol::encodeMessage(PROTOCOL_ID, static_cast<uint16_t>(MessageId::ForwardedData), MESSAGE_VERSION, body);
+}
+
+std::optional<std::vector<uint8_t>> Ax142100a::encodeRawData(const std::vector<uint8_t> & data) const
+{
+  if (data.size() > MAX_RAW_DATA_BYTES) {
+    throw std::length_error(
+      "AX142100A raw data of " + std::to_string(data.size()) + " bytes exceeds " + std::to_string(MAX_RAW_DATA_BYTES));
+  }
+  std::vector<uint8_t> body;
+  body.reserve(STATUS_BYTE_BYTES + data.size());
+  body.push_back(STATUS_BYTE_RAW_DATA_FLAG);
+  body.insert(body.end(), data.begin(), data.end());
   return protocol::encodeMessage(PROTOCOL_ID, static_cast<uint16_t>(MessageId::ForwardedData), MESSAGE_VERSION, body);
 }
 
