@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,7 +30,7 @@ namespace polymath::can
 
 /// @class polymath::can::AxiomaticModel
 /// @brief One Axiomatic converter model and its wire format.
-/// Subclasses override protocolId, encode, and decodeMessage.
+/// Subclasses override protocolId, encode, and decodeMessage, and encodeRawData when the model forwards raw data.
 /// Methods are const and keep no state between calls; one instance may be shared across threads.
 class AxiomaticModel
 {
@@ -39,8 +40,16 @@ public:
   /// @brief Encode one CAN frame as one complete protocol message
   virtual std::vector<uint8_t> encode(const polymath::socketcan::CanFrame & frame) const = 0;
 
-  /// @brief Decode every CAN frame in a buffer of back-to-back protocol messages.
-  /// Messages with a Message ID that carries no CAN frames are skipped.
+  /// @brief Encode raw (serial) data as one complete protocol message
+  /// @return std::nullopt when the model has no raw data channel
+  virtual std::optional<std::vector<uint8_t>> encodeRawData(const std::vector<uint8_t> & data) const;
+
+  /// @brief Whether encodeRawData and decode carry raw data
+  bool supportsRawData() const;
+
+  /// @brief Decode every CAN frame and raw data payload in a buffer of back-to-back protocol messages.
+  /// Messages with a Message ID that carries neither are skipped.
+  /// A trailing incomplete message is left unconsumed; pass it again with the bytes that follow.
   /// @param data buffer start
   /// @param size buffer length in bytes
   protocol::DecodeResult decode(const uint8_t * data, size_t size) const;
@@ -49,8 +58,8 @@ protected:
   /// @brief Protocol ID every message of this model carries
   virtual uint16_t protocolId() const = 0;
 
-  /// @brief Append the CAN frames in one message to result
-  /// @return false when the Message ID carries no CAN frames
+  /// @brief Append the CAN frames and raw data in one message to result
+  /// @return false when the Message ID carries neither
   virtual bool decodeMessage(const protocol::MessageView & message, protocol::DecodeResult & result) const = 0;
 };
 

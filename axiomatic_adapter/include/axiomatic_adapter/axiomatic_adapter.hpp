@@ -19,10 +19,12 @@
 #include <poll.h>
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "axiomatic_adapter/axiomatic_model.hpp"
 #include "axiomatic_adapter/models/ax140900.hpp"
@@ -103,6 +105,12 @@ public:
   /// @return success on started
   bool startReceptionThread();
 
+  /// @brief Set the callback for raw (serial) data payloads.
+  /// Called on the thread that read them: the reception thread, or the caller of receive().
+  /// Unset drops raw data.
+  /// @return false while the reception thread is running
+  bool setOnRawDataCallback(std::function<void(std::vector<uint8_t> data)> && callback_function);
+
   /// @brief Stop and join reception thread
   /// @param timeout_s INPUT timeout in seconds, <=0 means no timeout
   /// @return success on closed and joined thread
@@ -117,6 +125,14 @@ public:
   /// @param frame Linux CAN frame to send
   /// @return optional error string filled with an error message if any
   std::optional<socket_error_string_t> send(const can_frame & frame);
+
+  /// @brief Transmit raw (serial) data via socket
+  /// @param data payload, at most the model's raw data limit
+  /// @return optional error string, set when the model has no raw data channel or the write fails
+  std::optional<socket_error_string_t> sendRawData(const std::vector<uint8_t> & data);
+
+  /// @brief Whether the model carries raw (serial) data
+  bool supportsRawData() const;
 
   /// @brief Get state of socket
   /// @return TCPSocketState data type detailing OPEN or CLOSED
