@@ -33,8 +33,8 @@ constexpr size_t STANDARD_CAN_ID_BYTES = 2;
 constexpr size_t EXTENDED_CAN_ID_BYTES = 4;
 constexpr size_t STATUS_BYTE_BYTES = 1;
 
-// Status byte, first byte of the Forwarded Data payload:
-//   bit  6   : raw data — the rest of the payload is unformatted serial/Ethernet data
+// Status byte, first byte of the Forwarded Data payload (UMAX142100A section 4.2):
+//   bit  6   : raw (serial) data — the rest of the payload is forwarded as is; clear means CAN data
 //   bit  4   : 0 = standard 11-bit ID, 1 = extended 29-bit ID
 //   bits 3:0 : CAN data length
 constexpr uint8_t STATUS_BYTE_RAW_DATA_FLAG = 0x40;

@@ -79,10 +79,17 @@ picocom /dev/ttyAX1
 A pair that outlives the bridge keeps the application's end open across bridge restarts.
 
 The protocol message carries no serial port number.
-The converter's routing configuration (web interface, UMAX142100A section 4) decides which ports the data goes to and comes from:
+The converter's routing configuration (web interface, UMAX142100A section 4) decides which ports the data goes to and comes from.
+Interfaces are numbered RS-232 #1 = 1, RS-232 #2 = 2, RS-422 = 3, CAN = 4, Ethernet = 5.
+On Main Settings, set Data Port Type to TCP; the bridge does not speak UDP.
+In Ethernet and serial routing rules, leave "Forward all data bytes" at its default, or the rule truncates what it forwards.
 
-- **Ethernet → serial**: on `eth_data_routing.shtml`, list the RS ports (1 and 2 are RS-232, 3 is RS-422) in a rule's Output interfaces.
-- **Serial → Ethernet**: on `serial_data_routing.shtml`, list the Ethernet interface in the RS port's rule Output interfaces.
+- **Ethernet → serial**: on `eth_data_routing.shtml`, list the RS ports in a rule's Output interfaces.
+  Raw data is forwarded as is, subject only to these rules (UMAX142100A section 4.2).
+- **Ethernet → CAN**: CAN frames sent by the bridge pass through the same Ethernet routing rules, so a rule must also list CAN (4).
+- **Serial → Ethernet**: on `serial_data_routing.shtml`, list Ethernet (5) in the RS port's rule Output interfaces.
+- **CAN → Ethernet**: on `can_data_routing.shtml`, list Ethernet (5) and set Data forwarding to "Forward full message", as in the UMAX142100A CAN routing example.
+  "Forward all data bytes" appears to forward the data bytes without the CAN ID.
 
 All routed ports share the one serial device.
 To tell ports apart, configure distinct start bytes per port in the serial routing rules.
@@ -147,5 +154,4 @@ If you have any doubt, leave it at the default.
 3. CAN FD is not supported
 4. Only TCP mode is supported; no UDP support (heartbeats are required for UDP support)
 5. AX142100A 11-bit IDs are assumed to be 2 bytes on the wire; the manual only shows a 29-bit example.
-6. AX142100A serial → Ethernet raw data is assumed to arrive as Forwarded Data with the raw data flag; the manual only shows Ethernet → serial.
-   The device's maximum raw data payload per message is unconfirmed.
+6. The AX142100A's maximum raw data payload per message is unconfirmed.
