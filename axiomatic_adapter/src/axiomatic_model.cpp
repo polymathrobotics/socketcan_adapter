@@ -14,7 +14,6 @@
 
 #include "axiomatic_adapter/axiomatic_model.hpp"
 
-#include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -41,42 +40,20 @@ protocol::DecodeResult AxiomaticModel::decode(const uint8_t * data, size_t size)
   return result;
 }
 
-namespace
-{
-using ModelFactory = std::unique_ptr<const AxiomaticModel> (*)();
-
-template <typename ModelT>
-std::unique_ptr<const AxiomaticModel> make()
-{
-  return std::make_unique<ModelT>();
-}
-
-std::map<std::string, ModelFactory> modelFactories()
-{
-  return {
-    {"ax140900", &make<ax140900::Ax140900>},
-    {"ax142100a", &make<ax142100a::Ax142100a>},
-  };
-}
-}  // namespace
-
 std::unique_ptr<const AxiomaticModel> makeModel(const std::string & model)
 {
-  const auto factories = modelFactories();
-  const auto factory = factories.find(model);
-  if (factories.end() == factory) {
-    throw std::invalid_argument("Unknown Axiomatic model \"" + model + "\"");
+  if ("ax140900" == model) {
+    return std::make_unique<ax140900::Ax140900>();
   }
-  return factory->second();
+  if ("ax142100a" == model) {
+    return std::make_unique<ax142100a::Ax142100a>();
+  }
+  throw std::invalid_argument("Unknown Axiomatic model \"" + model + "\"");
 }
 
 std::vector<std::string> modelNames()
 {
-  std::vector<std::string> names;
-  for (const auto & [name, factory] : modelFactories()) {
-    names.push_back(name);
-  }
-  return names;
+  return {"ax140900", "ax142100a"};
 }
 
 }  // namespace polymath::can
