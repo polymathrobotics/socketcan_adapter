@@ -15,6 +15,7 @@
 #include "axiomatic_adapter/axiomatic_model.hpp"
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -26,15 +27,27 @@
 namespace polymath::can
 {
 
+std::optional<std::vector<uint8_t>> AxiomaticModel::encodeRawData(const std::vector<uint8_t> & /*data*/) const
+{
+  return std::nullopt;
+}
+
+bool AxiomaticModel::supportsRawData() const
+{
+  return encodeRawData({}).has_value();
+}
+
 protocol::DecodeResult AxiomaticModel::decode(const uint8_t * data, size_t size) const
 {
   protocol::ParsedMessages parsed = protocol::parseMessages(protocolId(), data, size);
-  protocol::DecodeResult result{{}, std::move(parsed.diagnostics)};
+  protocol::DecodeResult result;
+  result.diagnostics = std::move(parsed.diagnostics);
+  result.consumed = parsed.consumed;
   for (const auto & message : parsed.messages) {
     if (!decodeMessage(message, result)) {
       result.diagnostics.push_back(
         "SKIP: Message ID " + std::to_string(message.message_id) + " (" + std::to_string(message.body_size) +
-        "-byte body) carries no CAN frames");
+        "-byte body) carries no CAN frames or raw data");
     }
   }
   return result;

@@ -62,14 +62,8 @@ std::vector<uint8_t> encodeMessage(
 ParsedMessages parseMessages(uint16_t protocol_id, const uint8_t * data, size_t size)
 {
   ParsedMessages parsed;
-  if (size < HEADER_BYTES) {
-    parsed.diagnostics.push_back(
-      "DROP: received " + std::to_string(size) + " bytes, too short to contain a complete protocol header");
-    return parsed;
-  }
-
-  size_t scan_pos = 0;
-  while (scan_pos + HEADER_BYTES <= size) {
+  while (parsed.consumed + HEADER_BYTES <= size) {
+    const size_t scan_pos = parsed.consumed;
     const uint8_t * header = data + scan_pos;
     const bool tag_match = std::equal(AXIOMATIC_TAG.begin(), AXIOMATIC_TAG.end(), header);
     const uint16_t received_protocol_id =
@@ -77,7 +71,7 @@ ParsedMessages parseMessages(uint16_t protocol_id, const uint8_t * data, size_t 
     if (!tag_match || protocol_id != received_protocol_id) {
       std::ostringstream message;
       message << "DROP: sync prefix mismatch at offset " << scan_pos << " of " << size
-              << "-byte read; bytes there:" << std::hex;
+              << "-byte buffer; bytes there:" << std::hex;
       for (size_t i = 0; i < PROTOCOL_ID_OFFSET + PROTOCOL_ID_BYTES; ++i) {
         message << ' ' << static_cast<int>(header[i]);
       }
@@ -87,28 +81,21 @@ ParsedMessages parseMessages(uint16_t protocol_id, const uint8_t * data, size_t 
         message << "; the device speaks a different Protocol ID, so the wrong --model may be selected";
       }
       parsed.diagnostics.push_back(message.str());
+      parsed.consumed = size;
       return parsed;
     }
 
     const size_t declared_length = readLittleEndian(header + MESSAGE_DATA_LENGTH_OFFSET, MESSAGE_DATA_LENGTH_BYTES);
     const size_t body_start = scan_pos + HEADER_BYTES;
-    const size_t body_end = std::min(body_start + declared_length, size);
     if (body_start + declared_length > size) {
-      parsed.diagnostics.push_back(
-        "TRUNCATED: message at offset " + std::to_string(scan_pos) + " declares " + std::to_string(declared_length) +
-        " body bytes but only " + std::to_string(body_end - body_start) + " were received");
+      break;
     }
     parsed.messages.push_back(MessageView{
       static_cast<uint16_t>(readLittleEndian(header + MESSAGE_ID_OFFSET, MESSAGE_ID_BYTES)),
       header[MESSAGE_VERSION_OFFSET],
       data + body_start,
-      body_end - body_start});
-    scan_pos = body_start + declared_length;
-  }
-
-  if (scan_pos < size) {
-    parsed.diagnostics.push_back(
-      "DROP: " + std::to_string(size - scan_pos) + " trailing bytes too short to contain a protocol header");
+      declared_length});
+    parsed.consumed = body_start + declared_length;
   }
   return parsed;
 }
