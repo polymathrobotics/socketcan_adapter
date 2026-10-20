@@ -15,11 +15,11 @@
 #include "axiomatic_adapter/axiomatic_socketcan_bridge.hpp"
 
 #include <iostream>
+#include <memory>
 #include <string>
+#include <utility>
 
-namespace polymath
-{
-namespace can
+namespace polymath::can
 {
 
 AxiomaticSocketcanBridge::AxiomaticSocketcanBridge(
@@ -27,7 +27,8 @@ AxiomaticSocketcanBridge::AxiomaticSocketcanBridge(
   const std::string & ip,
   const std::string & port,
   bool verbose,
-  bool tcp_nodelay)
+  bool tcp_nodelay,
+  std::unique_ptr<const AxiomaticModel> model)
 : socketcan_adapter_(can_interface_name)
 , axiomatic_adapter_(
     ip,
@@ -35,7 +36,8 @@ AxiomaticSocketcanBridge::AxiomaticSocketcanBridge(
     std::bind(&AxiomaticSocketcanBridge::ethcanReceiveCallback, this, std::placeholders::_1),
     [](AxiomaticAdapter::socket_error_string_t /*error*/) { /* no-op */ },
     AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS,
-    tcp_nodelay)
+    tcp_nodelay,
+    std::move(model))
 , verbose_(verbose)
 {
   socketcan_adapter_.setOnReceiveCallback(
@@ -143,5 +145,4 @@ void AxiomaticSocketcanBridge::ethcanReceiveCallback(std::unique_ptr<const polym
   }
 }
 
-}  // namespace can
-}  // namespace polymath
+}  // namespace polymath::can
