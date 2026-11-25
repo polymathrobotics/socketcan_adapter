@@ -15,8 +15,10 @@
 #ifndef AXIOMATIC_ADAPTER__AXIOMATIC_SOCKETCAN_BRIDGE_NODE_HPP_
 #define AXIOMATIC_ADAPTER__AXIOMATIC_SOCKETCAN_BRIDGE_NODE_HPP_
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "axiomatic_adapter/axiomatic_adapter.hpp"
 #include "axiomatic_adapter/models/ax140900.hpp"
@@ -40,13 +42,17 @@ public:
   ///                    AxiomaticAdapter socket. See AxiomaticAdapter for the
   ///                    full tradeoff discussion.
   /// @param model converter model, e.g. std::make_unique<ax142100a::Ax142100a>(); must not be null
+  /// @param raw_data_callback_function called with the raw (serial) data of each TCP read from the converter;
+  ///                                   raw data is never put on the CAN bus
   AxiomaticSocketcanBridge(
     const std::string & can_interface_name,
     const std::string & ip,
     const std::string & port,
     bool verbose = false,
     bool tcp_nodelay = true,
-    std::unique_ptr<const AxiomaticModel> model = std::make_unique<ax140900::Ax140900>());
+    std::unique_ptr<const AxiomaticModel> model = std::make_unique<ax140900::Ax140900>(),
+    const std::function<void(std::vector<uint8_t> data)> && raw_data_callback_function =
+      [](std::vector<uint8_t> /*data*/) { /*do nothing*/ });
 
   /// @brief Destruct axiomatic socketcan bridge
   ~AxiomaticSocketcanBridge();

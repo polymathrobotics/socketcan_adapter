@@ -23,6 +23,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "axiomatic_adapter/axiomatic_model.hpp"
 #include "axiomatic_adapter/models/ax140900.hpp"
@@ -67,6 +68,8 @@ public:
   ///                    efficiency for bulk transfers). Better for real-time, but can, in constrained
   ///                    resource environments, cause issues
   /// @param model converter model, e.g. std::make_unique<ax142100a::Ax142100a>(); must not be null
+  /// @param raw_data_callback_function called from the reception thread with the raw (serial) data of each TCP read,
+  ///                                   joined in wire order; only models that carry serial data call it
   AxiomaticAdapter(
     const std::string & ip_address,
     const std::string & port,
@@ -76,7 +79,9 @@ public:
       [](socket_error_string_t /*error*/) { /*do nothing*/ },
     const std::chrono::milliseconds & receive_timeout_ms = AxiomaticAdapter::DEFAULT_SOCKET_RECEIVE_TIMEOUT_MS,
     bool tcp_nodelay = true,
-    std::unique_ptr<const AxiomaticModel> model = std::make_unique<ax140900::Ax140900>());
+    std::unique_ptr<const AxiomaticModel> model = std::make_unique<ax140900::Ax140900>(),
+    const std::function<void(std::vector<uint8_t> data)> && raw_data_callback_function =
+      [](std::vector<uint8_t> /*data*/) { /*do nothing*/ });
 
   /// @brief Destructor for AxiomaticAdapter
   virtual ~AxiomaticAdapter();
@@ -90,9 +95,21 @@ public:
   bool closeSocket();
 
   /// @brief Receive with a reference to a CanFrame to fill
+  /// Raw data in the read is dropped, and a read with only raw data returns an error; use the overload with raw_data
+  /// to get it.
   /// @param frame OUTPUT CanFrame to fill
   /// @return optional error string filled with an error message if any
   std::optional<socket_error_string_t> receive(polymath::socketcan::CanFrame & can_frame);
+
+  /// @brief Receive both CAN frames and raw (serial) data
+  /// Does one TCP read unless CAN frames from an earlier read are still pending, and never calls a callback.
+  /// @param can_frame OUTPUT reset on entry; set when a CAN frame is available
+  /// @param raw_data OUTPUT cleared on entry; the raw data payloads of this read joined in wire order, empty if none.
+  ///                 Always empty when a pending CAN frame is returned without a new read
+  /// @return optional error string, filled for socket errors and reads with neither CAN frames nor raw data.
+  /// On success, at least one of can_frame and raw_data is set
+  std::optional<socket_error_string_t> receive(
+    std::optional<polymath::socketcan::CanFrame> & can_frame, std::vector<uint8_t> & raw_data);
 
   /// @brief Receive returns the received CanFrame
   /// @return optional CanFrame

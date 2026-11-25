@@ -40,7 +40,7 @@ enum class MessageId : uint16_t
 
 /// @class polymath::can::ax142100a::Ax142100a
 /// @brief Encodes a Forwarded Data message.
-/// Decodes Forwarded Data messages; raw data payloads are skipped.
+/// Decodes Forwarded Data messages; raw data (serial) payloads are returned in DecodeResult::raw_data, not as CAN frames.
 class Ax142100a : public AxiomaticModel
 {
 public:
