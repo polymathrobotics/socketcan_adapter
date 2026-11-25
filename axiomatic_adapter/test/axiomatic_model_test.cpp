@@ -277,3 +277,30 @@ TEST_CASE("AxiomaticAdapter receives raw data alongside CAN frames", "[adapter][
   close(client);
   close(server);
 }
+
+TEST_CASE("AxiomaticAdapter reports a receive timeout as a timeout", "[adapter]")
+{
+  const int server = socket(AF_INET, SOCK_STREAM, 0);
+  REQUIRE(0 <= server);
+  sockaddr_in address{};
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  address.sin_port = 0;
+  REQUIRE(0 == bind(server, reinterpret_cast<sockaddr *>(&address), sizeof(address)));
+  REQUIRE(0 == listen(server, 1));
+  socklen_t address_size = sizeof(address);
+  REQUIRE(0 == getsockname(server, reinterpret_cast<sockaddr *>(&address), &address_size));
+
+  polymath::can::AxiomaticAdapter adapter("127.0.0.1", std::to_string(ntohs(address.sin_port)));
+  REQUIRE(adapter.openSocket());
+  const int client = accept(server, nullptr, nullptr);
+  REQUIRE(0 <= client);
+
+  CanFrame frame;
+  const auto error = adapter.receive(frame);  // the server sends nothing
+  REQUIRE(error.has_value());
+  REQUIRE("Receive operation timed out" == *error);
+
+  close(client);
+  close(server);
+}

@@ -243,6 +243,7 @@ public:
 
     size_t bytes_received = 0;
     std::atomic<bool> data_received(false);
+    bool timed_out = false;
     boost::system::error_code error_code;
 
     // set up the timer for timeout
@@ -264,7 +265,8 @@ public:
     // set up the timer to handle timeout cancellation
     timer.async_wait([&](const boost::system::error_code & error) {
       if (!error && !data_received.load()) {
-        error_code = boost::asio::error::timed_out;
+        // the cancelled receive completes after this handler with operation_aborted, so error_code cannot carry it
+        timed_out = true;
         // cancel the ongoing async receive operation on timeout (does not close socket)
         tcp_socket_.cancel();
       }
@@ -275,7 +277,7 @@ public:
     tcp_io_context_.run();
 
     // check for timeout or other errors
-    if (error_code == boost::asio::error::timed_out) {
+    if (timed_out) {
       return std::optional<AxiomaticAdapter::socket_error_string_t>("Receive operation timed out");
     } else if (error_code) {
       return std::optional<AxiomaticAdapter::socket_error_string_t>(
