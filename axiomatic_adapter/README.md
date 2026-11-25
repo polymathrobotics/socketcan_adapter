@@ -66,7 +66,8 @@ polymath::can::AxiomaticAdapter adapter(
   [](polymath::can::AxiomaticAdapter::socket_error_string_t /*error*/) { /*do nothing*/ },
   receive_timeout_ms,
   /*tcp_nodelay=*/true,  // optional, defaults to true; see below
-  std::make_unique<polymath::can::ax142100a::Ax142100a>()  // optional, defaults to ax140900::Ax140900
+  std::make_unique<polymath::can::ax142100a::Ax142100a>(),  // optional, defaults to ax140900::Ax140900
+  [](std::vector<uint8_t> /*data*/) { /* serial data of one TCP read, ax142100a only */ }  // optional
 );
 
 // open the socket
@@ -103,5 +104,5 @@ If you have any doubt, leave it at the default.
 2. Axiomatic-specific status messages are ignored and deliberately skipped. In future revisions this should be handled and reported as necessary.
 3. CAN FD is not supported
 4. Only TCP mode is supported; no UDP support (heartbeats are required for UDP support)
-5. AX142100A raw data (serial) payloads are skipped; only CAN frames are delivered.
+5. AX142100A raw data (serial) payloads are never put on the CAN bus. The adapter hands the raw data of each TCP read, joined in wire order, to an optional raw data callback, or returns it from `receive(std::optional<CanFrame> &, std::vector<uint8_t> &)`. The bridge executable does not set a callback, so it drops raw data. Data is not reassembled into lines: one print can span several reads.
 6. AX142100A 11-bit IDs are assumed to be 2 bytes on the wire; the manual only shows a 29-bit example.

@@ -46,7 +46,8 @@ public:
     const std::function<void(AxiomaticAdapter::socket_error_string_t error)> && error_callback_function,
     const std::chrono::milliseconds & receive_timeout_ms,
     bool tcp_nodelay,
-    std::unique_ptr<const AxiomaticModel> model)
+    std::unique_ptr<const AxiomaticModel> model,
+    const std::function<void(std::vector<uint8_t> data)> && raw_data_callback_function)
   : tcp_io_context_()
   , tcp_socket_(tcp_io_context_)
   , ip_address_(ip_address)
@@ -57,6 +58,7 @@ public:
   , rx_buffer_(RECEIVE_BUFFER_SIZE, 0)
   , tcp_nodelay_(tcp_nodelay)
   , model_(std::move(model))
+  , raw_data_callback_(raw_data_callback_function)
   {
     if (!model_) {
       throw std::invalid_argument("AxiomaticAdapter requires a model");
@@ -172,13 +174,19 @@ public:
 
     tcp_receive_thread_ = std::thread([this]() {
       while (!stop_thread_requested_) {
-        polymath::socketcan::CanFrame frame = polymath::socketcan::CanFrame();
-        std::optional<AxiomaticAdapter::socket_error_string_t> error = receive(frame);
+        std::optional<polymath::socketcan::CanFrame> frame;
+        std::vector<uint8_t> raw_data;
+        std::optional<AxiomaticAdapter::socket_error_string_t> error = receive(frame, raw_data);
 
-        if (!error) {
-          receive_callback_(std::make_unique<polymath::socketcan::CanFrame>(frame));
-        } else {
+        if (error) {
           error_callback_(*error);
+          continue;
+        }
+        if (frame) {
+          receive_callback_(std::make_unique<polymath::socketcan::CanFrame>(*frame));
+        }
+        if (!raw_data.empty()) {
+          raw_data_callback_(std::move(raw_data));
         }
       }
 
@@ -205,6 +213,25 @@ public:
 
   std::optional<AxiomaticAdapter::socket_error_string_t> receive(polymath::socketcan::CanFrame & can_frame)
   {
+    std::optional<polymath::socketcan::CanFrame> frame;
+    std::vector<uint8_t> raw_data;
+    auto error = receive(frame, raw_data);
+    if (error) {
+      return error;
+    }
+    if (!frame) {
+      return std::make_optional<AxiomaticAdapter::socket_error_string_t>("No CAN frames in received protocol traffic.");
+    }
+    can_frame = *frame;
+    return std::nullopt;
+  }
+
+  std::optional<AxiomaticAdapter::socket_error_string_t> receive(
+    std::optional<polymath::socketcan::CanFrame> & can_frame, std::vector<uint8_t> & raw_data)
+  {
+    can_frame.reset();
+    raw_data.clear();
+
     // A previous TCP read may have decoded several CAN frames out of
     // packed protocol messages — deliver those one at a time before doing
     // another network read, so packed frames don't get silently dropped
@@ -262,14 +289,20 @@ public:
     for (const auto & diagnostic : decoded.diagnostics) {
       std::cerr << "[Axiomatic parser] " << diagnostic << std::endl;
     }
-    if (decoded.frames.empty()) {
+    // serial data is a byte stream, so one read's payloads are joined in wire order
+    for (const auto & payload : decoded.raw_data) {
+      raw_data.insert(raw_data.end(), payload.begin(), payload.end());
+    }
+    if (decoded.frames.empty() && raw_data.empty()) {
       return std::make_optional<AxiomaticAdapter::socket_error_string_t>(
         decoded.diagnostics.empty() ? "No CAN frames in received protocol traffic." : decoded.diagnostics.back());
     }
 
     pending_frames_.insert(pending_frames_.end(), decoded.frames.begin(), decoded.frames.end());
-    can_frame = pending_frames_.front();
-    pending_frames_.pop_front();
+    if (!pending_frames_.empty()) {
+      can_frame = pending_frames_.front();
+      pending_frames_.pop_front();
+    }
     return std::nullopt;
   }
 
@@ -342,6 +375,8 @@ private:
   bool tcp_nodelay_;
 
   std::unique_ptr<const AxiomaticModel> model_;
+
+  std::function<void(std::vector<uint8_t> data)> raw_data_callback_;
 };
 
 AxiomaticAdapter::AxiomaticAdapter(
@@ -351,7 +386,8 @@ AxiomaticAdapter::AxiomaticAdapter(
   const std::function<void(AxiomaticAdapter::socket_error_string_t error)> && error_callback_function,
   const std::chrono::milliseconds & receive_timeout_ms,
   bool tcp_nodelay,
-  std::unique_ptr<const AxiomaticModel> model)
+  std::unique_ptr<const AxiomaticModel> model,
+  const std::function<void(std::vector<uint8_t> data)> && raw_data_callback_function)
 : pimpl_(std::make_unique<AxiomaticAdapterImpl>(
     ip_address,
     port,
@@ -359,7 +395,8 @@ AxiomaticAdapter::AxiomaticAdapter(
     std::move(error_callback_function),
     receive_timeout_ms,
     tcp_nodelay,
-    std::move(model)))
+    std::move(model),
+    std::move(raw_data_callback_function)))
 {}
 
 AxiomaticAdapter::~AxiomaticAdapter()
@@ -391,6 +428,12 @@ std::optional<AxiomaticAdapter::socket_error_string_t> AxiomaticAdapter::receive
   polymath::socketcan::CanFrame & can_frame)
 {
   return pimpl_->receive(can_frame);
+}
+
+std::optional<AxiomaticAdapter::socket_error_string_t> AxiomaticAdapter::receive(
+  std::optional<polymath::socketcan::CanFrame> & can_frame, std::vector<uint8_t> & raw_data)
+{
+  return pimpl_->receive(can_frame, raw_data);
 }
 
 std::optional<const polymath::socketcan::CanFrame> AxiomaticAdapter::receive()

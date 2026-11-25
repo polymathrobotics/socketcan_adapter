@@ -39,16 +39,14 @@ constexpr uint8_t STATUS_BYTE_RAW_DATA_FLAG = 0x40;
 constexpr uint8_t STATUS_BYTE_EXTENDED_ID_FLAG = 0x10;
 constexpr uint8_t STATUS_BYTE_CAN_DATA_LENGTH_MASK = 0x0F;
 
-/// Appends every CAN frame in one Forwarded Data message body to result
+/// Appends every CAN frame in one Forwarded Data message body to result; a raw data payload goes to result.raw_data
 void decodeForwardedData(const uint8_t * body, size_t body_size, protocol::DecodeResult & result)
 {
   size_t walker = 0;
   while (walker + STATUS_BYTE_BYTES <= body_size) {
     const uint8_t status_byte = body[walker];
     if (0 != (status_byte & STATUS_BYTE_RAW_DATA_FLAG)) {
-      result.diagnostics.push_back(
-        "SKIP: raw data payload of " + std::to_string(body_size - walker) + " bytes at body offset " +
-        std::to_string(walker));
+      result.raw_data.emplace_back(body + walker + STATUS_BYTE_BYTES, body + body_size);
       return;
     }
     const bool extended_id = 0 != (status_byte & STATUS_BYTE_EXTENDED_ID_FLAG);

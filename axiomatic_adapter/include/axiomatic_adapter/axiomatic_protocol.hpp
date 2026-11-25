@@ -57,11 +57,14 @@ struct ParsedMessages
   std::vector<std::string> diagnostics;
 };
 
-/// @brief CAN frames decoded from a buffer, plus a description of every byte range skipped or dropped
+/// @brief CAN frames and raw serial payloads decoded from a buffer, plus a description of every byte range skipped
+/// or dropped
 struct DecodeResult
 {
   std::vector<polymath::socketcan::CanFrame> frames;
   std::vector<std::string> diagnostics;
+  /// @brief One entry per raw data message, in wire order; only models that carry serial data fill it
+  std::vector<std::vector<uint8_t>> raw_data;
 };
 
 /// @brief Read an unsigned little-endian integer

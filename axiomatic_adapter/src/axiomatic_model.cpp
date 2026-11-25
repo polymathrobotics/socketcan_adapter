@@ -29,7 +29,7 @@ namespace polymath::can
 protocol::DecodeResult AxiomaticModel::decode(const uint8_t * data, size_t size) const
 {
   protocol::ParsedMessages parsed = protocol::parseMessages(protocolId(), data, size);
-  protocol::DecodeResult result{{}, std::move(parsed.diagnostics)};
+  protocol::DecodeResult result{{}, std::move(parsed.diagnostics), {}};
   for (const auto & message : parsed.messages) {
     if (!decodeMessage(message, result)) {
       result.diagnostics.push_back(
